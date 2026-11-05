@@ -37,7 +37,24 @@
         grade: 2
       },
       world: {
-        unlocks: []
+        unlocks: [],
+        places: [],
+        prizes: [],
+        questDates: [],
+        questsFinished: 0,
+        activitiesDone: 0,
+        hintTokens: 0,
+        activity: {
+          dateKey: null,
+          used: {}
+        }
+      },
+      party: {
+        dateKey: null,
+        offered: false,
+        skipped: false,
+        spins: 0,
+        cardRounds: 0
       },
       daily: {
         dateKey: null,

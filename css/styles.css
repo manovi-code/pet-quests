@@ -640,6 +640,94 @@ h2 {
   text-align: center;
 }
 
+.house-card.locked {
+  background: #f3efe6;
+  border-style: dashed;
+}
+
+.house-art.lone {
+  width: 140px;
+  margin: 0 auto;
+}
+
+.story-text {
+  margin: 0;
+  font-family: var(--font);
+  font-size: 1.15rem;
+  line-height: 1.45;
+  text-align: center;
+}
+
+.story-art {
+  display: flex;
+  justify-content: center;
+}
+
+.story-svg {
+  width: 100%;
+  height: auto;
+}
+
+.prompt.story-prompt {
+  font-size: 1.7rem;
+  padding-top: 0;
+}
+
+.party-friends {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+}
+
+.party-friends svg {
+  width: 84px;
+  height: 84px;
+}
+
+.card-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+}
+
+.party-card {
+  min-height: 96px;
+  border-radius: 16px;
+  border: 2px solid var(--sage-deep);
+  background: var(--sage);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px;
+}
+
+.party-card.up {
+  background: var(--panel);
+  border-color: var(--terracotta);
+}
+
+.reels {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+}
+
+.reel {
+  min-height: 96px;
+  border-radius: 16px;
+  border: 2px solid var(--terracotta);
+  background: var(--cream);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.reel svg {
+  width: 72px;
+  height: 72px;
+}
+
 .house-card strong {
   font-family: var(--font);
   font-size: 1.02rem;

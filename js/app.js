@@ -22,6 +22,14 @@
   var settingsNote = '';
   var neighborhoodNote = '';
   var freshUnlock = null;
+  var freshPlace = null;
+  var partyNote = '';
+  var partyStep = 0;
+  var bookIndex = 0;
+  var cardDeck = null;
+  var cardNeedsContinue = false;
+  var cardRewarded = false;
+  var spinReels = ['star', 'leaf', 'heart'];
 
   function $(sel) {
     return document.querySelector(sel);
@@ -72,7 +80,12 @@
     else if (screen === 'nickname') renderNickname(app);
     else if (screen === 'home') renderHome(app);
     else if (screen === 'house') renderHouse(app);
+    else if (screen === 'locked') renderLocked(app);
+    else if (screen === 'library') renderLibrary(app);
     else if (screen === 'quest') renderQuest(app);
+    else if (screen === 'party') renderParty(app);
+    else if (screen === 'party-cards') renderPartyCards(app);
+    else if (screen === 'party-spin') renderPartySpin(app);
     else if (screen === 'celebrate') renderCelebrate(app);
     else if (screen === 'practice') renderPractice(app);
     else if (screen === 'settings') renderSettings(app);
@@ -116,6 +129,7 @@
       '<li>A short pet story</li>' +
       '<li>Times tables practice</li>' +
       '<li>A little neighborhood to explore</li>' +
+      '<li>A party with animal friends at the end</li>' +
       '</ul>' +
       '<button type="button" class="btn primary lg" data-act="start-onboarding">Meet your pet</button>' +
       '</main>';
@@ -244,6 +258,25 @@
       : '';
     var houses = PQWorld.HOUSES.map(function (house) {
       var title = PQWorld.houseTitle(house, name);
+      var open = PQWorld.isPlaceOpen(state, house.id);
+      if (!open) {
+        return (
+          '<button type="button" class="house-card locked" data-act="open-locked" data-house="' +
+          house.id +
+          '">' +
+          '<span class="house-art">' +
+          PQWorld.renderHouseFront(house.id) +
+          '</span>' +
+          '<strong>' +
+          esc(title) +
+          '</strong>' +
+          '<span>' +
+          esc(house.blurb) +
+          '</span>' +
+          '<em class="house-flag">Not open yet</em>' +
+          '</button>'
+        );
+      }
       var flag = missionStillOpen(house.mission)
         ? '<em class="house-flag">Quest here</em>'
         : '';
@@ -264,16 +297,21 @@
         '</button>'
       );
     }).join('');
+    var nextPlace = PQWorld.nextLockedPlace(state);
+    var pathNote = nextPlace
+      ? '<p class="kind-note">' + esc(PQWorld.placeHelp(nextPlace, PQWorld.placeProgress(state, nextPlace))) + '</p>'
+      : '';
     var cta = done
-      ? '<p class="kind-note">Today’s quest is done. The neighborhood is still open, or you can try extra tables.</p>' +
-        '<button type="button" class="btn primary lg" data-act="extra-practice">Extra times tables</button>'
+      ? '<p class="kind-note">Today’s quest is done. The party is still open, and the neighborhood is too.</p>' +
+        '<button type="button" class="btn primary lg" data-act="open-party">Visit the party</button>' +
+        '<button type="button" class="btn secondary" data-act="extra-practice">Extra times tables</button>'
       : '<button type="button" class="btn primary lg" data-act="start-quest">Start today’s quest</button>';
 
     app.innerHTML =
       headerBar('Pet Quests') +
       '<main class="panel home">' +
       '<div class="garden-banner">' +
-      PQWorld.renderSkylineSvg() +
+      PQWorld.renderSkylineSvg(state) +
       '<div class="pet-on-banner">' +
       PQPets.renderPetSvg(state.petId, stage, { label: name }) +
       '</div>' +
@@ -286,6 +324,7 @@
       '</p>' +
       todayPlanHtml() +
       note +
+      pathNote +
       readyCardHtml() +
       cta +
       '<div class="house-grid" aria-label="Neighborhood">' +
@@ -494,17 +533,33 @@
   }
 
   function renderMathTask(task) {
+    var story = '';
+    if (task.story && task.story.text) {
+      story =
+        '<p class="story-text">' + esc(task.story.text) + '</p>' +
+        '<div class="story-art">' + PQMath.renderStorySvg(task.story) + '</div>' +
+        '<button type="button" class="btn secondary" data-act="read-story">Read aloud</button>';
+    }
+    var tokens = state.world && state.world.hintTokens ? state.world.hintTokens : 0;
+    var hintBtn = tokens > 0
+      ? '<button type="button" class="btn secondary" data-act="use-hint">Use a gentle hint (' + tokens + ')</button>'
+      : '';
+    var eyebrow = task.story
+      ? 'Story problem'
+      : (task.mission === 'warmup' ? 'Warmup' : 'Times tables');
     return (
       '<section class="math-card">' +
       '<p class="eyebrow">' +
-      (task.mission === 'warmup' ? 'Warmup' : 'Times tables') +
+      eyebrow +
       '</p>' +
-      '<div class="prompt" aria-live="polite">' +
+      story +
+      '<div class="prompt' + (task.story ? ' story-prompt' : '') + '" aria-live="polite">' +
       esc(task.prompt) +
       ' = ?</div>' +
       '<div class="answer-display" aria-live="polite">' +
       (keypadValue || ' ') +
       '</div>' +
+      hintBtn +
       renderKeypad() +
       '</section>'
     );
@@ -559,6 +614,9 @@
       (freshUnlock
         ? '<p class="kind-note">' + esc(freshUnlock.line) + '</p>'
         : '') +
+      (freshPlace
+        ? '<p class="kind-note">' + esc(freshPlace.openLine) + '</p>'
+        : '') +
       '<div class="week-card">' +
       '<div class="week-top"><span>This week</span><strong>' +
       week.completed +
@@ -574,7 +632,134 @@
           '!</p>'
         : '<p class="week-hint">Keep going at your pace. Missing a day is okay.</p>') +
       '</div>' +
-      '<button type="button" class="btn primary lg" data-act="go-home">Back to habitat</button>' +
+      '<button type="button" class="btn primary lg" data-act="go-home">Back to the neighborhood</button>' +
+      '<button type="button" class="btn secondary" data-act="open-party">Back to the party</button>' +
+      '</main>';
+  }
+
+  function renderLocked(app) {
+    var house = PQWorld.getHouse(houseId);
+    var progress = PQWorld.placeProgress(state, house);
+    var help = PQWorld.placeHelp(house, progress);
+    app.innerHTML =
+      headerBar(house.title, { back: true }) +
+      '<main class="panel">' +
+      '<div class="house-art lone">' + PQWorld.renderHouseFront(house.id) + '</div>' +
+      '<h2>' + esc(house.title) + '</h2>' +
+      '<p class="lede">' + esc(help) + '</p>' +
+      '<p class="plain-note">Daily quests and the gift at each open place both count. Nothing here is a test.</p>' +
+      '<p class="kind-note">Quests finished: ' + progress.quests + '. Place gifts found: ' + progress.activities + '.</p>' +
+      '<button type="button" class="btn primary lg" data-act="back">Back to the neighborhood</button>' +
+      '</main>';
+  }
+
+  function currentBook() {
+    var books = PQReading.libraryBooks(state.courses && state.courses.grade, PQPets.displayName(state));
+    if (!books.length) return null;
+    if (bookIndex < 0) bookIndex = 0;
+    bookIndex = bookIndex % books.length;
+    return books[bookIndex];
+  }
+
+  function renderLibrary(app) {
+    var book = currentBook();
+    var speakBtn = PQAudio.canSpeak()
+      ? '<button type="button" class="btn secondary" data-act="read-aloud">Read aloud</button>'
+      : '';
+    app.innerHTML =
+      headerBar('Extra story', { back: true }) +
+      '<main class="panel">' +
+      '<p class="lede">These stories are extra. You can read one anytime. They are not part of today’s quest.</p>' +
+      '<section class="reading-card">' +
+      '<h2>' + esc(book ? book.title : 'Story') + '</h2>' +
+      '<p class="passage">' + esc(book ? book.text : '') + '</p>' +
+      '<div class="row-actions">' +
+      speakBtn +
+      '<button type="button" class="btn secondary" data-act="next-book">Another story</button>' +
+      '<button type="button" class="btn primary lg" data-act="back">Back to the library</button>' +
+      '</div>' +
+      '</section>' +
+      '</main>';
+  }
+
+  function renderParty(app) {
+    var name = PQPets.displayName(state);
+    var note = partyNote
+      ? '<div class="feedback good" role="status"><p>' + esc(partyNote) + '</p></div>'
+      : '';
+    var prizeCount = (state.world && state.world.prizes) ? state.world.prizes.length : 0;
+    app.innerHTML =
+      headerBar('Party', { back: true }) +
+      '<main class="panel party">' +
+      '<div class="party-friends" aria-hidden="true">' +
+      PQParty.renderFaceSvg('fox') +
+      PQParty.renderFaceSvg('frog') +
+      PQParty.renderFaceSvg('bird') +
+      '</div>' +
+      '<h2>Party time</h2>' +
+      '<p class="lede">The school work is done. ' + esc(name) +
+      ' is here with Fern the fox, Moss the frog, and Coco the bird. Play a game, or leave whenever you like.</p>' +
+      (freshUnlock ? '<p class="kind-note">' + esc(freshUnlock.line) + '</p>' : '') +
+      (freshPlace ? '<p class="kind-note">' + esc(freshPlace.openLine) + '</p>' : '') +
+      '<button type="button" class="btn primary lg" data-act="open-cards">Play pet cards</button>' +
+      '<button type="button" class="btn primary lg" data-act="open-spin">Spin for a prize</button>' +
+      '<button type="button" class="btn secondary" data-act="party-dance">Dance</button>' +
+      '<button type="button" class="btn secondary" data-act="party-hug">Hug a friend</button>' +
+      '<p class="plain-note">Prizes saved on this device: ' + prizeCount + '.</p>' +
+      note +
+      '<button type="button" class="btn ghost" data-act="leave-party">Leave the party</button>' +
+      '</main>';
+  }
+
+  function renderPartyCards(app) {
+    var dateKey = PQStorage.localDateKey();
+    var limited = PQParty.cardRoundsLeft(state, dateKey) <= 0 && !cardDeck;
+    var board = '';
+    if (cardDeck && cardDeck.length) {
+      board = '<div class="card-grid">' + cardDeck.map(function (card, i) {
+        var up = card.up || card.matched;
+        return (
+          '<button type="button" class="party-card' + (up ? ' up' : '') + '" data-act="flip-card" data-idx="' + i + '" aria-label="' +
+          (up ? esc(PQParty.faceLabel(card.face)) : 'Face-down card') + '">' +
+          (up ? PQParty.renderFaceSvg(card.face) : PQParty.renderCardBack()) +
+          '</button>'
+        );
+      }).join('') + '</div>';
+    }
+    var continueBtn = cardNeedsContinue
+      ? '<button type="button" class="btn secondary" data-act="cards-continue">Try another pair</button>'
+      : '';
+    app.innerHTML =
+      headerBar('Pet cards', { back: true }) +
+      '<main class="panel party">' +
+      '<p class="lede">' + (limited
+        ? 'The cards are resting. You can spin, dance, or head home.'
+        : 'Turn two cards. Matching animal friends stay up.') + '</p>' +
+      board +
+      continueBtn +
+      (partyNote ? '<div class="feedback good" role="status"><p>' + esc(partyNote) + '</p></div>' : '') +
+      '<button type="button" class="btn ghost" data-act="back">Back to the party</button>' +
+      '</main>';
+  }
+
+  function renderPartySpin(app) {
+    var dateKey = PQStorage.localDateKey();
+    var left = PQParty.spinsLeft(state, dateKey);
+    var reels = (spinReels || ['star', 'leaf', 'heart']).map(function (icon) {
+      return '<div class="reel">' + PQParty.renderIcon(icon) + '</div>';
+    }).join('');
+    var spinBtn = left > 0
+      ? '<button type="button" class="btn primary lg" data-act="do-spin">Spin</button>'
+      : '<p class="lede">The spinner is resting. You can still dance, hug a friend, or head home.</p>';
+    app.innerHTML =
+      headerBar('Prize spinner', { back: true }) +
+      '<main class="panel party">' +
+      '<p class="lede">Every spin shares a prize. Matching pictures bring a special decoration. Nothing is lost.</p>' +
+      '<div class="reels" aria-hidden="true">' + reels + '</div>' +
+      spinBtn +
+      '<p class="plain-note">Spins left today: ' + left + '.</p>' +
+      (partyNote ? '<div class="feedback good" role="status"><p>' + esc(partyNote) + '</p></div>' : '') +
+      '<button type="button" class="btn ghost" data-act="back">Back to the party</button>' +
       '</main>';
   }
 
@@ -743,6 +928,25 @@
         go('home');
         return;
       }
+      if (screen === 'locked') {
+        houseId = null;
+        go('home');
+        return;
+      }
+      if (screen === 'library') {
+        go(houseId ? 'house' : 'home');
+        return;
+      }
+      if (screen === 'party-cards' || screen === 'party-spin') {
+        partyNote = '';
+        cardNeedsContinue = false;
+        go('party');
+        return;
+      }
+      if (screen === 'party') {
+        leaveParty();
+        return;
+      }
       if (screen === 'quest' && questFocus && houseId) {
         go('house');
         return;
@@ -794,19 +998,41 @@
     }
     if (act === 'open-house') {
       houseId = t.getAttribute('data-house') || 'pet';
+      if (!PQWorld.isPlaceOpen(state, houseId)) {
+        go('locked');
+        return;
+      }
       roleplayNote = '';
       go('house');
       return;
     }
+    if (act === 'open-locked') {
+      houseId = t.getAttribute('data-house') || 'garden';
+      go('locked');
+      return;
+    }
     if (act === 'role-act') {
       var actionId = t.getAttribute('data-action');
+      var chosen = findHouseAction(houseId, actionId);
+      if (chosen && chosen.nav === 'library') {
+        bookIndex = 0;
+        PQAudio.stopSpeak();
+        go('library');
+        return;
+      }
       var played = PQWorld.playAction(houseId, actionId, state, {
         petName: PQPets.displayName(state),
-        step: roleplayStep
+        step: roleplayStep,
+        dateKey: PQStorage.localDateKey()
       });
       roleplayStep += 1;
       roleplayNote = played.message;
-      PQAudio.play('correct', state.soundOn);
+      if (played.opened && played.opened.length) {
+        freshPlace = played.opened[0];
+        neighborhoodNote = played.opened[0].openLine;
+      }
+      PQAudio.play(played.prize ? 'party' : 'correct', state.soundOn);
+      save();
       render();
       return;
     }
@@ -846,6 +1072,67 @@
       go('home');
       return;
     }
+    if (act === 'open-party') {
+      if (!todayDone()) return;
+      PQParty.offerParty(state, PQStorage.localDateKey());
+      partyNote = '';
+      save();
+      go('party');
+      return;
+    }
+    if (act === 'leave-party') {
+      leaveParty();
+      return;
+    }
+    if (act === 'open-cards') {
+      beginCards();
+      return;
+    }
+    if (act === 'open-spin') {
+      partyNote = '';
+      go('party-spin');
+      return;
+    }
+    if (act === 'party-dance') {
+      partyBeat(true);
+      return;
+    }
+    if (act === 'party-hug') {
+      partyBeat(false);
+      return;
+    }
+    if (act === 'flip-card') {
+      flipPartyCard(parseInt(t.getAttribute('data-idx'), 10));
+      return;
+    }
+    if (act === 'cards-continue') {
+      if (cardDeck) PQParty.turnBack(cardDeck);
+      cardNeedsContinue = false;
+      partyNote = 'Pick two cards.';
+      render();
+      return;
+    }
+    if (act === 'do-spin') {
+      doSpin();
+      return;
+    }
+    if (act === 'next-book') {
+      bookIndex += 1;
+      PQAudio.stopSpeak();
+      render();
+      return;
+    }
+    if (act === 'read-story') {
+      var storyTask = currentTask();
+      if (storyTask && storyTask.story && storyTask.story.text) {
+        PQAudio.speak(storyTask.story.text, true);
+      }
+      return;
+    }
+    if (act === 'use-hint') {
+      useHintToken();
+      return;
+    }
     if (act === 'reset-confirm') {
       if (
         window.confirm(
@@ -859,13 +1146,22 @@
         roleplayNote = '';
         questFocus = null;
         freshUnlock = null;
+        freshPlace = null;
         neighborhoodNote = '';
         settingsNote = '';
+        partyNote = '';
+        cardDeck = null;
+        bookIndex = 0;
         go('welcome');
       }
       return;
     }
     if (act === 'read-aloud') {
+      if (screen === 'library') {
+        var book = currentBook();
+        if (book && book.text) PQAudio.speak(book.text, true);
+        return;
+      }
       var task = currentTask();
       if (task && task.text) PQAudio.speak(task.text, true);
       return;
@@ -893,6 +1189,101 @@
       submitMath();
       return;
     }
+  }
+
+  function findHouseAction(id, actionId) {
+    var house = PQWorld.getHouse(id);
+    var list = (house && house.actions) || [];
+    var i;
+    for (i = 0; i < list.length; i++) {
+      if (list[i].id === actionId) return list[i];
+    }
+    return null;
+  }
+
+  function leaveParty() {
+    PQParty.skipParty(state, PQStorage.localDateKey());
+    cardDeck = null;
+    cardNeedsContinue = false;
+    save();
+    go('celebrate');
+  }
+
+  function beginCards() {
+    var dateKey = PQStorage.localDateKey();
+    cardNeedsContinue = false;
+    cardRewarded = false;
+    if (PQParty.cardRoundsLeft(state, dateKey) <= 0) {
+      cardDeck = null;
+      partyNote = 'The cards are resting. You can spin, dance, or head home.';
+      go('party-cards');
+      return;
+    }
+    cardDeck = PQParty.createCardDeck(Math.random);
+    partyNote = 'Find the matching animal friends.';
+    go('party-cards');
+  }
+
+  function flipPartyCard(index) {
+    if (!cardDeck || !isFinite(index)) return;
+    if (cardNeedsContinue) return;
+    var result = PQParty.flipCard(cardDeck, index);
+    cardDeck = result.cards;
+    partyNote = result.message;
+    cardNeedsContinue = !!result.needsContinue;
+    if (result.cleared && !cardRewarded) {
+      cardRewarded = true;
+      var award = PQParty.finishCardRound(state, PQStorage.localDateKey());
+      partyNote = award.message;
+      save();
+      PQAudio.play('party', state.soundOn);
+    } else if (result.matched) {
+      PQAudio.play('correct', state.soundOn);
+    }
+    render();
+  }
+
+  function doSpin() {
+    var result = PQParty.spin(state, Math.random, PQStorage.localDateKey());
+    if (result.reels) spinReels = result.reels;
+    partyNote = result.message;
+    if (result.prize) {
+      save();
+      PQAudio.play(result.rare ? 'party' : 'spin', state.soundOn);
+    }
+    render();
+  }
+
+  function partyBeat(dance) {
+    var name = PQPets.displayName(state);
+    var danceLines = [
+      'You and ' + name + ' spin once with Fern the fox. Everyone is smiling.',
+      'Coco the bird flaps along. The party stays gentle and bright.',
+      name + ' takes a small bow. The friends cheer.'
+    ];
+    var hugLines = [
+      'Moss the frog gives a gentle hug. ' + name + ' leans in.',
+      'Fern the fox rests a paw near ' + name + '. It is a kind hello.',
+      'You hug ' + name + '. The friends stay close and quiet.'
+    ];
+    var lines = dance ? danceLines : hugLines;
+    partyNote = lines[partyStep % lines.length];
+    partyStep += 1;
+    PQAudio.play('party', state.soundOn);
+    if (screen !== 'party') go('party');
+    else render();
+  }
+
+  function useHintToken() {
+    var task = currentTask();
+    PQWorld.ensureWorld(state);
+    if (!task || !(state.world.hintTokens > 0)) return;
+    if (task.type !== 'mul' && task.type !== 'add' && task.type !== 'sub') return;
+    state.world.hintTokens -= 1;
+    feedback = { kind: 'gentle', message: 'Here is a gentle hint.', hint: PQMath.getHint(task, 1) };
+    save();
+    PQAudio.play('hint', state.soundOn);
+    render();
   }
 
   function currentTask() {
@@ -1162,10 +1553,17 @@
     var weeklyJustMet = !weekBefore.met && weekAfter.met;
     PQQuest.applyGrowthForQuest(state, weeklyJustMet);
     freshUnlock = PQWorld.grantNextUnlock(state);
+    var openedPlaces = PQWorld.noteQuestFinished(state, PQStorage.localDateKey());
+    freshPlace = openedPlaces && openedPlaces.length ? openedPlaces[0] : freshPlace;
+    if (freshPlace) neighborhoodNote = freshPlace.openLine;
+    PQParty.offerParty(state, PQStorage.localDateKey());
     questFocus = null;
+    partyNote = '';
+    cardDeck = null;
+    cardRewarded = false;
     save();
     PQAudio.play('celebrate', state.soundOn);
-    go('celebrate');
+    go('party');
   }
 
   function esc(s) {

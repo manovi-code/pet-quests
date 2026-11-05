@@ -368,6 +368,368 @@
           answer: 1
         }
       ]
+    },
+    {
+      id: 'r17',
+      level: 1,
+      title: 'Little Basket',
+      text: 'Maple carried a small basket to the garden. She put one red apple inside. The basket stayed light.',
+      questions: [
+        {
+          q: 'Where did Maple carry the basket?',
+          choices: ['To the garden', 'To the pond', 'To the school', 'To a car'],
+          answer: 0
+        },
+        {
+          q: 'What did she put inside?',
+          choices: ['A blue cup', 'One red apple', 'A shoe', 'A book'],
+          answer: 1
+        }
+      ]
+    },
+    {
+      id: 'r18',
+      level: 1,
+      title: 'Pond Watch',
+      text: 'A frog sat on a flat stone. Maple watched from the grass. The frog jumped into the pond.',
+      questions: [
+        {
+          q: 'Where did the frog sit?',
+          choices: ['On a flat stone', 'On a roof', 'In a cup', 'On a bike'],
+          answer: 0
+        },
+        {
+          q: 'What did the frog do next?',
+          choices: ['Sang a song', 'Jumped into the pond', 'Opened a book', 'Climbed a tree'],
+          answer: 1
+        }
+      ]
+    },
+    {
+      id: 'r19',
+      level: 1,
+      title: 'Soft Blanket',
+      text: 'Maple pulled a soft blanket to the rug. She patted it flat. Then she sat down.',
+      questions: [
+        {
+          q: 'What did Maple pull to the rug?',
+          choices: ['A wagon', 'A soft blanket', 'A ladder', 'A drum'],
+          answer: 1
+        },
+        {
+          q: 'What did she do after patting it flat?',
+          choices: ['She sat down', 'She ran outside', 'She hid the rug', 'She turned off the lamp'],
+          answer: 0
+        }
+      ]
+    },
+    {
+      id: 'r20',
+      level: 1,
+      title: 'Bakery Window',
+      text: 'Maple looked in the bakery window. She saw round rolls. The baker waved.',
+      questions: [
+        {
+          q: 'What did Maple look in?',
+          choices: ['The bakery window', 'A dark cave', 'A mailbox', 'A puddle'],
+          answer: 0
+        },
+        {
+          q: 'Who waved?',
+          choices: ['A duck', 'The baker', 'A bus driver', 'A fish'],
+          answer: 1
+        }
+      ]
+    },
+    {
+      id: 'r21',
+      level: 1,
+      title: 'Cool Water',
+      text: 'Maple’s bowl was blue. She drank cool water. Then she looked up and waited.',
+      questions: [
+        {
+          q: 'What color was the bowl?',
+          choices: ['Blue', 'Black', 'Orange', 'Silver'],
+          answer: 0
+        },
+        {
+          q: 'What did Maple drink?',
+          choices: ['Warm soup', 'Cool water', 'Juice from a can', 'Milk from a jug on the porch'],
+          answer: 1
+        }
+      ]
+    },
+    {
+      id: 'r22',
+      level: 1,
+      title: 'Yellow Leaf',
+      text: 'A yellow leaf fell on the path. Maple sniffed it. She left the leaf where it landed.',
+      questions: [
+        {
+          q: 'What color was the leaf?',
+          choices: ['Yellow', 'Purple', 'Black', 'Blue'],
+          answer: 0
+        },
+        {
+          q: 'What did Maple do with the leaf?',
+          choices: ['She ate it', 'She left it where it landed', 'She threw it in a bin', 'She put it in a shoe'],
+          answer: 1
+        }
+      ]
+    },
+    {
+      id: 'r23',
+      level: 1,
+      title: 'Quiet Nap',
+      text: 'After lunch, Maple curled up on a cushion. The room was quiet. She closed her eyes.',
+      questions: [
+        {
+          q: 'When did Maple curl up?',
+          choices: ['After lunch', 'Before breakfast', 'During a storm at sea', 'On the way to town'],
+          answer: 0
+        },
+        {
+          q: 'Where did she curl up?',
+          choices: ['On a cushion', 'On a bicycle', 'In a boat', 'On the roof'],
+          answer: 0
+        }
+      ]
+    },
+    {
+      id: 'r24',
+      level: 1,
+      title: 'Fox Hello',
+      text: 'Fern the fox sat by the gate. Maple walked over slowly. Fern waved a paw.',
+      questions: [
+        {
+          q: 'Who sat by the gate?',
+          choices: ['Fern the fox', 'A truck driver', 'A teacher', 'A fish'],
+          answer: 0
+        },
+        {
+          q: 'How did Maple walk over?',
+          choices: ['Slowly', 'On a skateboard', 'Backward only', 'With a drum'],
+          answer: 0
+        }
+      ]
+    },
+    {
+      id: 'r25',
+      level: 2,
+      title: 'Picnic Cloth',
+      text: 'Maple helped spread a red cloth under the apple tree. Two cups and a small plate sat on top. A breeze lifted one corner, and Maple held it down.',
+      questions: [
+        {
+          q: 'Where was the cloth spread?',
+          choices: ['Under the apple tree', 'Inside a car', 'On the school roof', 'Across the pond'],
+          answer: 0
+        },
+        {
+          q: 'What lifted one corner of the cloth?',
+          choices: ['A breeze', 'A bicycle', 'A dog in a truck', 'A bell'],
+          answer: 0
+        },
+        {
+          q: 'What did Maple do then?',
+          choices: ['Held the corner down', 'Ran to the road', 'Closed the bakery', 'Rang the school bell'],
+          answer: 0
+        }
+      ]
+    },
+    {
+      id: 'r26',
+      level: 2,
+      title: 'Library Lamp',
+      text: 'The library lamp made a small warm circle on the table. Maple opened a picture book and turned one page. Outside, rain tapped the window, but the chair stayed dry.',
+      questions: [
+        {
+          q: 'What made a warm circle on the table?',
+          choices: ['The library lamp', 'A flashlight in a tent', 'The sun on the pond', 'A candle in the garden'],
+          answer: 0
+        },
+        {
+          q: 'What did Maple open?',
+          choices: ['A picture book', 'A paint can', 'A window shade', 'A lunch box'],
+          answer: 0
+        },
+        {
+          q: 'What tapped the window?',
+          choices: ['Rain', 'A hammer', 'A drum', 'A duck'],
+          answer: 0
+        }
+      ]
+    },
+    {
+      id: 'r27',
+      level: 2,
+      title: 'Muddy Path',
+      text: 'Maple stepped around the muddy part of the path. Her paws stayed mostly clean. She shook once at the door, then waited on the mat.',
+      questions: [
+        {
+          q: 'What did Maple step around?',
+          choices: ['The muddy part of the path', 'A sleeping fox', 'A bakery cart', 'A school desk'],
+          answer: 0
+        },
+        {
+          q: 'Where did she wait?',
+          choices: ['On the mat', 'In the pond', 'On the roof', 'In the bell tower'],
+          answer: 0
+        }
+      ]
+    },
+    {
+      id: 'r28',
+      level: 2,
+      title: 'Seed Packets',
+      text: 'At the little stand, Maple looked at seed packets with pictures of carrots and peas. She chose the packet with the orange carrots. The seller dropped it into a paper bag.',
+      questions: [
+        {
+          q: 'What pictures were on the packets?',
+          choices: ['Carrots and peas', 'Boats and trains', 'Hats and shoes', 'Stars and moons only'],
+          answer: 0
+        },
+        {
+          q: 'Which packet did Maple choose?',
+          choices: ['The one with orange carrots', 'The one with blue peas only', 'A packet of nails', 'An empty bag'],
+          answer: 0
+        },
+        {
+          q: 'Where did the seller put the packet?',
+          choices: ['Into a paper bag', 'Under a stone', 'Into the pond', 'On the school bell'],
+          answer: 0
+        }
+      ]
+    },
+    {
+      id: 'r29',
+      level: 3,
+      title: 'Berry Row',
+      text: 'Maple walked the garden row after the rain, counting ripe strawberries and leaving the pale ones to grow. She set the red berries in a shallow basket and carried it back along the stone path. A bee crossed the path once, and Maple stopped so it could pass.',
+      questions: [
+        {
+          q: 'Which berries did Maple pick?',
+          choices: ['The ripe red ones', 'Only the pale ones', 'Berries from the bakery', 'Berries floating in the pond'],
+          answer: 0
+        },
+        {
+          q: 'What did she carry them in?',
+          choices: ['A shallow basket', 'A metal bucket from school', 'Her water bowl', 'A paper boat'],
+          answer: 0
+        },
+        {
+          q: 'Why did Maple stop on the path?',
+          choices: ['So a bee could pass', 'To ring a bell', 'To hide the basket', 'To wait for a bus'],
+          answer: 0
+        }
+      ]
+    },
+    {
+      id: 'r30',
+      level: 3,
+      title: 'Morning Bread',
+      text: 'Before the bakery opened, Maple waited beside the window while the loaves cooled on a wooden rack. She noticed the round rolls first, then the long ones, and saved her look for the biggest roll. Warm bread smell drifted out when the door opened.',
+      questions: [
+        {
+          q: 'When did Maple wait by the window?',
+          choices: ['Before the bakery opened', 'After the shop closed for the night', 'During a swim', 'While the school bell rang'],
+          answer: 0
+        },
+        {
+          q: 'What cooled on the wooden rack?',
+          choices: ['Loaves of bread', 'Library books', 'Wet boots', 'Pond stones'],
+          answer: 0
+        },
+        {
+          q: 'What drifted out when the door opened?',
+          choices: ['Warm bread smell', 'Cold wind from a cave', 'A flock of ducks', 'Chalk dust'],
+          answer: 0
+        }
+      ]
+    },
+    {
+      id: 'r31',
+      level: 3,
+      title: 'Afternoon Pond',
+      text: 'In the afternoon Maple sat on the grassy bank and watched two ducks draw lines across the pond. She stacked three smooth stones and did not throw them. When a cloud covered the sun, the water turned a deeper blue and the ducks kept swimming.',
+      questions: [
+        {
+          q: 'How many ducks did Maple watch?',
+          choices: ['Two', 'Ten', 'None', 'Seven'],
+          answer: 0
+        },
+        {
+          q: 'What did she do with the stones?',
+          choices: ['Stacked three and did not throw them', 'Tossed them all in at once', 'Took them to the bakery', 'Buried them under the mat'],
+          answer: 0
+        },
+        {
+          q: 'What happened when a cloud covered the sun?',
+          choices: ['The water turned a deeper blue', 'The pond dried up', 'The ducks flew to school', 'The stones rolled away'],
+          answer: 0
+        }
+      ]
+    },
+    {
+      id: 'r32',
+      level: 3,
+      title: 'Story Hour',
+      text: 'At story hour Maple shared a bench with Fern the fox and listened while the librarian read about a boat, a storm, and a safe harbor. Maple followed the pictures when the words felt fast. When the chapter ended, both friends stayed a moment in the quiet room.',
+      questions: [
+        {
+          q: 'Who shared the bench with Maple?',
+          choices: ['Fern the fox', 'The baker', 'A duck', 'A puppy from another town'],
+          answer: 0
+        },
+        {
+          q: 'What was the story about?',
+          choices: ['A boat, a storm, and a safe harbor', 'A race across the city', 'A lost bicycle', 'A closed bakery'],
+          answer: 0
+        },
+        {
+          q: 'What did Maple do when the words felt fast?',
+          choices: ['Followed the pictures', 'Left the building', 'Covered her ears', 'Rang a bell'],
+          answer: 0
+        }
+      ]
+    }
+  ];
+
+  PASSAGES.forEach(function (p) {
+    if (p.level) return;
+    var n = parseInt(String(p.id).replace(/\D/g, ''), 10);
+    p.level = n <= 10 ? 1 : 2;
+  });
+
+  var LIBRARY_BOOKS = [
+    {
+      id: 'b01',
+      level: 1,
+      title: '{name} and the Red Ball',
+      text: '{name} found a red ball by the step. The ball rolled to the grass. {name} waited, then nudged it back.'
+    },
+    {
+      id: 'b02',
+      level: 1,
+      title: 'A Bowl for {name}',
+      text: '{name} had a blue bowl by the door. Cool water sat in it. After a drink, {name} sat in a sunny spot.'
+    },
+    {
+      id: 'b03',
+      level: 2,
+      title: '{name} Visits the Garden',
+      text: '{name} walked between the flowers and stopped at the strawberry leaves. A bee was already there. {name} watched, then took the long way back to the path.'
+    },
+    {
+      id: 'b04',
+      level: 2,
+      title: 'Rainy Day with {name}',
+      text: 'Rain tapped the roof while {name} stayed on the rug. A blanket made a soft cave. When the rain slowed, {name} looked out and saw one bright puddle.'
+    },
+    {
+      id: 'b05',
+      level: 3,
+      title: '{name} and the Library Key',
+      text: 'The librarian let {name} hold the ribbon that marked the next chapter. {name} carried it carefully to the window seat and looked at the picture of a small boat. Outside, the path was still wet, so the story was a good place to stay.'
     }
   ];
 
@@ -381,15 +743,57 @@
   /**
    * Pick a passage avoiding recently used ids when possible.
    */
-  function pickPassage(usedIds, rng) {
+  function levelForGrade(grade) {
+    var n = parseInt(grade, 10);
+    if (n === 1 || n === 2) return 1;
+    if (n === 3) return 2;
+    if (n === 4 || n === 5) return 3;
+    return 0;
+  }
+
+  function pickPassage(usedIds, rng, options) {
     rng = rng || Math.random;
     usedIds = usedIds || [];
+    options = options || {};
+    var level = levelForGrade(options.grade);
     var fresh = PASSAGES.filter(function (p) {
       return usedIds.indexOf(p.id) === -1;
     });
     var pool = fresh.length ? fresh : PASSAGES.slice();
+    if (level) {
+      var band = pool.filter(function (p) { return p.level === level; });
+      if (!band.length) {
+        band = PASSAGES.filter(function (p) { return p.level === level; });
+      }
+      if (band.length) pool = band;
+    }
     var idx = Math.floor(rng() * pool.length);
     return pool[idx];
+  }
+
+  function fillPetName(text, petName) {
+    var name = (petName && String(petName).trim()) || 'Your pet';
+    return String(text || '').replace(/\{name\}/g, name);
+  }
+
+  function libraryBooks(grade, petName) {
+    var level = levelForGrade(grade);
+    var list = LIBRARY_BOOKS.slice();
+    if (level) {
+      list.sort(function (a, b) {
+        var da = Math.abs((a.level || 2) - level);
+        var db = Math.abs((b.level || 2) - level);
+        return da - db;
+      });
+    }
+    return list.map(function (book) {
+      return {
+        id: book.id,
+        level: book.level,
+        title: fillPetName(book.title, petName),
+        text: fillPetName(book.text, petName)
+      };
+    });
   }
 
   /**
@@ -468,8 +872,11 @@
 
   return {
     PASSAGES: PASSAGES,
+    LIBRARY_BOOKS: LIBRARY_BOOKS,
+    levelForGrade: levelForGrade,
     getPassageById: getPassageById,
     pickPassage: pickPassage,
+    libraryBooks: libraryBooks,
     passageToTasks: passageToTasks,
     checkReadingAnswer: checkReadingAnswer,
     processReadingAttempt: processReadingAttempt
