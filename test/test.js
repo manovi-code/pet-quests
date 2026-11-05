@@ -13,6 +13,7 @@ var PQMath = require(path.join(root, 'math.js'));
 var PQReading = require(path.join(root, 'reading.js'));
 var PQQuest = require(path.join(root, 'quest.js'));
 var PQWorld = require(path.join(root, 'world.js'));
+var PQParty = require(path.join(root, 'party.js'));
 
 var passed = 0;
 var failed = 0;
@@ -549,6 +550,310 @@ test('growth stages advance with quest points', function () {
   assert.strictEqual(PQQuest.stageFromPoints(25), 2);
   assert.strictEqual(PQQuest.stageFromPoints(50), 3);
   assert.strictEqual(PQQuest.stageFromPoints(80), 4);
+});
+
+function hasWholeNumber(text, n) {
+  return new RegExp('(?:^|\\D)' + n + '(?:\\D|$)').test(String(text));
+}
+
+function warmupWithinGrade(task, grade) {
+  if (grade <= 1) {
+    assert.ok(task.a >= 0 && task.a <= 9, 'g1 a ' + task.a);
+    assert.ok(task.b >= 0 && task.b <= 9, 'g1 b ' + task.b);
+  } else if (grade === 2) {
+    assert.ok(task.a >= 0 && task.a <= 20);
+    assert.ok(task.b >= 0 && task.b <= 20);
+  } else if (grade === 3) {
+    assert.ok(task.a >= 0 && task.a <= 50);
+    assert.ok(task.b >= 0 && task.b <= 50);
+  } else {
+    assert.ok(task.a >= 0 && task.a <= 100);
+    assert.ok(task.b >= 0 && task.b <= 100);
+  }
+  if (task.type === 'add') assert.strictEqual(task.answer, task.a + task.b);
+  if (task.type === 'sub') {
+    assert.ok(task.b <= task.a);
+    assert.strictEqual(task.answer, task.a - task.b);
+    assert.ok(task.answer >= 0);
+  }
+  if (task.type === 'add' && grade === 2) assert.ok(task.answer <= 20);
+  if (task.type === 'add' && grade === 3) assert.ok(task.answer <= 50);
+  if (task.type === 'add' && grade >= 4) assert.ok(task.answer <= 100);
+}
+
+test('story-math numbers honor grade caps', function () {
+  var grade;
+  var i;
+  for (grade = 1; grade <= 5; grade++) {
+    var rng = lcg(30 + grade);
+    for (i = 0; i < 30; i++) {
+      var id = i === 0 ? 'warm-0' : (i === 1 ? 'warm-1' : ('warm-x-' + i));
+      var task = PQMath.makeAddSubTask(rng, id, { grade: grade, petName: 'Maple' });
+      warmupWithinGrade(task, grade);
+      if (task.story) {
+        assert.ok(hasWholeNumber(task.story.text, task.a), task.story.text);
+        assert.ok(hasWholeNumber(task.story.text, task.b), task.story.text);
+        assert.ok(task.story.text.indexOf('Maple') !== -1);
+        task.story.scenes.forEach(function (scene) {
+          assert.ok(scene.count >= 0 && scene.count <= 10);
+          if (scene.count > 1) assert.ok(scene.count === task.a || scene.count === task.b);
+        });
+      }
+    }
+  }
+
+  var state = PQStorage.defaultState();
+  state.petName = 'Maple';
+  state.courses.grade = 2;
+  state.courses.parts = { warmup: true, reading: false, multiply: false };
+  var quest = PQQuest.generateDailyQuest(state, lcg(8), { now: new Date(2026, 10, 5, 12, 0, 0) });
+  assert.ok(quest.tasks[0].story, 'first warmup is a picture story');
+  assert.ok(/strawberr/i.test(quest.tasks[0].story.text));
+  assert.strictEqual(quest.tasks[1].story, null, 'a plain problem stays in the mix');
+  var svg = PQMath.renderStorySvg(quest.tasks[0].story);
+  assert.ok(svg.indexOf('<svg') !== -1);
+  assert.ok(svg.indexOf('data-icon="strawberry"') !== -1);
+  warmupWithinGrade(quest.tasks[0], 2);
+
+  state.courses.grade = 1;
+  state.courses.parts = { warmup: false, reading: false, multiply: true };
+  state.courses.tables = [2, 7, 9];
+  var mulQuest = PQQuest.generateDailyQuest(state, lcg(4), { now: new Date(2026, 10, 2, 12, 0, 0) });
+  var sawStory = false;
+  var sawPlain = false;
+  mulQuest.tasks.forEach(function (t) {
+    assert.strictEqual(t.a, 2, 'turned-off or above-grade tables stay out, got ' + t.a);
+    assert.ok(t.b >= 1 && t.b <= 5);
+    assert.strictEqual(t.answer, t.a * t.b);
+    if (t.story) {
+      sawStory = true;
+      assert.ok(hasWholeNumber(t.story.text, t.a));
+      assert.ok(hasWholeNumber(t.story.text, t.b));
+      assert.ok(t.story.text.indexOf('Maple') !== -1);
+    } else {
+      sawPlain = true;
+    }
+  });
+  assert.ok(sawStory && sawPlain, 'picture stories are mixed with plain problems');
+});
+
+test('new locations start locked except the original four', function () {
+  var state = PQStorage.defaultState();
+  ['pet', 'cottage', 'library', 'school'].forEach(function (id) {
+    assert.strictEqual(PQWorld.isPlaceOpen(state, id), true, id);
+  });
+  ['garden', 'bakery', 'pond', 'friend'].forEach(function (id) {
+    assert.strictEqual(PQWorld.isPlaceOpen(state, id), false, id);
+  });
+  var help = PQWorld.placeHelp(PQWorld.getHouse('garden'), PQWorld.placeProgress(state, PQWorld.getHouse('garden')));
+  assert.ok(/garden/i.test(help));
+  assert.ok(/quest/i.test(help));
+
+  PQWorld.noteQuestFinished(state, '2026-11-05');
+  assert.strictEqual(PQWorld.isPlaceOpen(state, 'garden'), false, 'a quest alone does not open the garden');
+  var gift = PQWorld.playAction('pet', 'surprise', state, { petName: 'Maple', dateKey: '2026-11-05', step: 0 });
+  assert.ok(gift.prize && gift.prize.name);
+  assert.ok(/saved on this device/i.test(gift.message));
+  assert.ok(!/wrong|fail|lose|shame/i.test(gift.message));
+  assert.strictEqual(PQWorld.isPlaceOpen(state, 'garden'), true);
+  assert.ok(PQWorld.isPlaceOpen(state, 'bakery') === false);
+
+  var before = state.world.prizes.length;
+  var activities = state.world.activitiesDone;
+  var again = PQWorld.playAction('pet', 'surprise', state, { petName: 'Maple', dateKey: '2026-11-05', step: 1 });
+  assert.strictEqual(again.prize, null);
+  assert.strictEqual(again.already, true);
+  assert.strictEqual(state.world.prizes.length, before);
+  assert.strictEqual(state.world.activitiesDone, activities);
+  assert.ok(!/wrong|fail|lose|shame/i.test(again.message));
+
+  var hinted = PQWorld.playAction('school', 'hint-star', state, { petName: 'Maple', dateKey: '2026-11-05' });
+  assert.ok(hinted.prize);
+  assert.ok(state.world.hintTokens >= 1);
+  assert.ok(!/wrong|fail|lose|shame/i.test(hinted.message));
+});
+
+test('location prizes persist without wiping the pet', function () {
+  var mem = {};
+  var raw = {
+    getItem: function (k) { return Object.prototype.hasOwnProperty.call(mem, k) ? mem[k] : null; },
+    setItem: function (k, v) { mem[k] = String(v); },
+    removeItem: function (k) { delete mem[k]; }
+  };
+  var s = PQStorage.createStore(raw);
+  var state = s.defaultState();
+  state.onboardingDone = true;
+  state.petId = 'kitten';
+  state.petName = 'Maple';
+  state.growthPoints = 10;
+  state.world.unlocks = ['pet-bowl'];
+  PQWorld.noteQuestFinished(state, '2026-11-05');
+  PQWorld.playAction('cottage', 'snack', state, { petName: 'Maple', dateKey: '2026-11-05' });
+  assert.strictEqual(s.save(state), true);
+  var loaded = s.load();
+  assert.strictEqual(loaded.version, 1);
+  assert.strictEqual(PQStorage.SCHEMA_VERSION, 1);
+  assert.strictEqual(loaded.petId, 'kitten');
+  assert.strictEqual(loaded.petName, 'Maple');
+  assert.strictEqual(loaded.growthPoints, 10);
+  assert.deepStrictEqual(loaded.world.unlocks, ['pet-bowl']);
+  assert.ok(loaded.world.places.indexOf('garden') !== -1);
+  assert.ok(loaded.world.prizes.length >= 1);
+  assert.ok(loaded.world.prizes[0].name);
+});
+
+test('party starts after quest completion and can be skipped', function () {
+  var state = PQStorage.defaultState();
+  state.petName = 'Maple';
+  state.petId = 'bunny';
+  state.daily = { dateKey: '2026-11-05', completed: false, taskIndex: 3, tasks: [], answers: [] };
+  var when = new Date(2026, 10, 5, 15, 0, 0);
+  PQStorage.markDailyComplete(state, when);
+  PQQuest.applyGrowthForQuest(state, false);
+  var points = state.growthPoints;
+  var stage = state.growthStage;
+  assert.strictEqual(state.daily.completed, true);
+  assert.ok(points >= 10);
+
+  var party = PQParty.offerParty(state, '2026-11-05');
+  assert.strictEqual(party.offered, true);
+  assert.strictEqual(party.skipped, false);
+
+  var left = PQParty.skipParty(state, '2026-11-05');
+  assert.strictEqual(left.skipped, true);
+  assert.strictEqual(left.completed, true);
+  assert.strictEqual(state.daily.completed, true);
+  assert.strictEqual(state.growthPoints, points);
+  assert.strictEqual(state.growthStage, stage);
+
+  var spin = PQParty.spin(state, function () { return 0; }, '2026-11-05');
+  assert.strictEqual(spin.ok, true);
+  assert.strictEqual(spin.limited, false);
+  assert.strictEqual(spin.rare, true);
+  assert.ok(spin.prize && spin.prize.name);
+  assert.ok(!/bet|wager|jackpot|lose|shame/i.test(spin.message));
+  PQParty.spin(state, function () { return 0.4; }, '2026-11-05');
+  PQParty.spin(state, function () { return 0.8; }, '2026-11-05');
+  var stopped = PQParty.spin(state, function () { return 0.2; }, '2026-11-05');
+  assert.strictEqual(stopped.limited, true);
+  assert.strictEqual(stopped.prize, null);
+  assert.ok(/resting/i.test(stopped.message));
+  assert.ok(state.world.prizes.length >= 1);
+
+  var deck = PQParty.createCardDeck(function () { return 0; });
+  assert.strictEqual(deck.length, 6);
+  var faces = {};
+  deck.forEach(function (card) { faces[card.face] = (faces[card.face] || 0) + 1; });
+  assert.strictEqual(faces.fox, 2);
+  assert.strictEqual(faces.frog, 2);
+  assert.strictEqual(faces.bird, 2);
+  var first = PQParty.flipCard(deck, 0);
+  assert.ok(!first.cleared);
+  assert.ok(!/wrong|fail|lose|shame/i.test(first.message));
+  var other = 1;
+  while (other < deck.length && deck[other].face === deck[0].face) other += 1;
+  var miss = PQParty.flipCard(deck, other);
+  assert.strictEqual(miss.matched, false);
+  assert.strictEqual(miss.needsContinue, true);
+  assert.ok(!/wrong|fail|lose|shame/i.test(miss.message));
+  assert.strictEqual(state.daily.completed, true);
+});
+
+test('old saves merge new fields and keep grade, courses, and unlocks', function () {
+  assert.strictEqual(PQStorage.SCHEMA_VERSION, 1);
+  var mem = {};
+  var raw = {
+    getItem: function (k) { return Object.prototype.hasOwnProperty.call(mem, k) ? mem[k] : null; },
+    setItem: function (k, v) { mem[k] = String(v); },
+    removeItem: function (k) { delete mem[k]; }
+  };
+  var s = PQStorage.createStore(raw);
+  mem[s.STORAGE_KEY] = JSON.stringify({
+    version: 1,
+    onboardingDone: true,
+    petId: 'kitten',
+    petName: 'Maple',
+    growthStage: 2,
+    growthPoints: 25,
+    soundOn: false,
+    tableStats: { '2': { attempts: 4, correct: 3 } },
+    courses: {
+      parts: { warmup: false, reading: false, multiply: true },
+      tables: [2, 5],
+      grade: 2
+    },
+    world: { unlocks: ['pet-bowl', 'library-seat'] },
+    weekly: { weekKey: '2026-11-02', completedDates: ['2026-11-02', '2026-11-04'] }
+  });
+  var loaded = s.load();
+  assert.strictEqual(loaded.version, 1);
+  assert.strictEqual(loaded.petName, 'Maple');
+  assert.strictEqual(loaded.petId, 'kitten');
+  assert.strictEqual(loaded.growthPoints, 25);
+  assert.strictEqual(loaded.growthStage, 2);
+  assert.strictEqual(loaded.soundOn, false);
+  assert.strictEqual(loaded.tableStats['2'].correct, 3);
+  assert.strictEqual(loaded.courses.grade, 2);
+  assert.strictEqual(loaded.courses.parts.reading, false);
+  assert.strictEqual(loaded.courses.parts.multiply, true);
+  assert.deepStrictEqual(loaded.courses.tables, [2, 5]);
+  assert.deepStrictEqual(loaded.world.unlocks, ['pet-bowl', 'library-seat']);
+  assert.deepStrictEqual(loaded.world.places, []);
+  assert.deepStrictEqual(loaded.world.prizes, []);
+  assert.strictEqual(loaded.party.offered, false);
+  assert.strictEqual(loaded.weekly.completedDates.length, 2);
+
+  var seen = {};
+  weekDates().forEach(function (date, day) {
+    var quest = PQQuest.generateDailyQuest(loaded, lcg(50 + day), { now: date });
+    assert.ok(!quest.tasks.some(function (t) { return t.mission === 'reading' || t.mission === 'warmup'; }));
+    mulTasks(quest).forEach(function (t) {
+      assert.ok(t.a === 2 || t.a === 5, 'table ' + t.a);
+      seen[t.a] = true;
+      if (t.story) assert.strictEqual(t.answer, t.a * t.b);
+    });
+  });
+  assert.ok(seen[2] && seen[5]);
+});
+
+function wordCount(text) {
+  return String(text).trim().split(/\s+/).length;
+}
+
+test('reading bank grew and grade 1–2 stays simpler than grade 4–5', function () {
+  assert.ok(PQReading.PASSAGES.length >= 32, 'passages ' + PQReading.PASSAGES.length);
+  assert.ok(PQReading.LIBRARY_BOOKS.length >= 4);
+  var easyWords = 0;
+  var easyN = 0;
+  var richWords = 0;
+  var richN = 0;
+  PQReading.PASSAGES.forEach(function (p) {
+    assert.ok(p.level >= 1 && p.level <= 3, p.id);
+    p.questions.forEach(function (q) {
+      assert.ok(q.answer >= 0 && q.answer < q.choices.length, p.id);
+    });
+    if (p.level === 1) {
+      easyWords += wordCount(p.text);
+      easyN += 1;
+    }
+    if (p.level === 3) {
+      richWords += wordCount(p.text);
+      richN += 1;
+    }
+  });
+  assert.ok(easyN >= 8 && richN >= 4);
+  assert.ok(easyWords / easyN < richWords / richN);
+
+  var i;
+  for (i = 0; i < 12; i++) {
+    assert.strictEqual(PQReading.pickPassage([], lcg(i + 1), { grade: 1 }).level, 1);
+    assert.strictEqual(PQReading.pickPassage([], lcg(i + 3), { grade: 2 }).level, 1);
+    assert.strictEqual(PQReading.pickPassage([], lcg(i + 9), { grade: 5 }).level, 3);
+  }
+  var books = PQReading.libraryBooks(2, 'Maple');
+  assert.ok(books[0].text.indexOf('Maple') !== -1);
+  assert.ok(books[0].text.indexOf('{name}') === -1);
+  assert.ok(books[0].level <= books[books.length - 1].level);
 });
 
 console.log('\n' + passed + ' passed, ' + failed + ' failed');

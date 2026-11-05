@@ -184,7 +184,10 @@
     if (courses.parts.warmup) {
       var warmupN = opts.warmupCount != null ? opts.warmupCount : DEFAULTS.warmupCount;
       for (i = 0; i < warmupN; i++) {
-        tasks.push(PQMath.makeAddSubTask(rng, 'warm-' + i, { grade: courses.grade }));
+        tasks.push(PQMath.makeAddSubTask(rng, 'warm-' + i, {
+          grade: courses.grade,
+          petName: state.petName
+        }));
       }
       missions.push({ id: 'warmup', label: 'Warmup', count: warmupN });
     }
@@ -192,7 +195,7 @@
     if (courses.parts.reading) {
       var passage = opts.reusePassage && opts.reusePassage.id
         ? opts.reusePassage
-        : PQReading.pickPassage(state.readingUsedIds || [], rng);
+        : PQReading.pickPassage(state.readingUsedIds || [], rng, { grade: courses.grade });
       var readingTasks = PQReading.passageToTasks(passage);
       for (i = 0; i < readingTasks.length; i++) tasks.push(readingTasks[i]);
       passageId = passage.id;
@@ -214,6 +217,7 @@
           dayIndex: plan.dayIndex,
           grade: courses.grade,
           tableStats: state.tableStats || {},
+          petName: state.petName,
           idPrefix: 'mul'
         }
       );

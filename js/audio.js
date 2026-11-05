@@ -55,6 +55,14 @@
       setTimeout(function () { beep(783.99, 0.18, 'sine', 0.05); }, 200);
     } else if (kind === 'hint') {
       beep(349.23, 0.1, 'sine', 0.035);
+    } else if (kind === 'party') {
+      beep(523.25, 0.1, 'sine', 0.045);
+      setTimeout(function () { beep(659.25, 0.1, 'sine', 0.04); }, 110);
+      setTimeout(function () { beep(783.99, 0.16, 'sine', 0.04); }, 220);
+    } else if (kind === 'spin') {
+      beep(392, 0.07, 'triangle', 0.03);
+      setTimeout(function () { beep(494, 0.07, 'triangle', 0.03); }, 80);
+      setTimeout(function () { beep(587, 0.12, 'sine', 0.04); }, 160);
     }
   }
 

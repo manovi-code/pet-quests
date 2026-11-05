@@ -291,7 +291,9 @@
       factorMax: options.factorMax
     });
     var b = pickFactor(a, bounds, factStats, rng);
-    return mulTaskFrom(a, b, id || ('mul-' + a + 'x' + b + '-' + Math.floor(rng() * 1e6)));
+    var task = mulTaskFrom(a, b, id || ('mul-' + a + 'x' + b + '-' + Math.floor(rng() * 1e6)));
+    if (!options.deferStory) attachStory(task, rng, options.petName);
+    return task;
   }
 
   function makeMulTask(tableStats, rng, id, options) {
@@ -320,7 +322,9 @@
       introduced: uniqueTables(spec.introduced),
       dayIndex: spec.dayIndex == null ? 0 : spec.dayIndex,
       grade: spec.grade,
-      tableStats: spec.tableStats || tableStats
+      tableStats: spec.tableStats || tableStats,
+      deferStory: true,
+      petName: spec.petName
     };
 
     var tasks = [];
@@ -334,7 +338,9 @@
         introduced: shared.introduced,
         dayIndex: shared.dayIndex,
         grade: shared.grade,
-        tableStats: shared.tableStats
+        tableStats: shared.tableStats,
+        deferStory: true,
+        petName: shared.petName
       };
       if (band) {
         opts.factorMin = band.min;
@@ -389,13 +395,16 @@
         grade: shared.grade,
         tableStats: shared.tableStats,
         factorMin: entry.band.min,
-        factorMax: entry.band.max
+        factorMax: entry.band.max,
+        deferStory: true,
+        petName: shared.petName
       };
       tasks[replaceAt] = makeMulTaskPreferWeakFacts(tableStats, factStats, rng, 'mul-stretch', forced);
     }
 
     var prefix = spec.idPrefix || 'mul';
     for (i = 0; i < tasks.length; i++) tasks[i].id = prefix + '-' + i;
+    applyMulStories(tasks, spec.petName);
     return tasks;
   }
 
@@ -518,7 +527,7 @@
       type = isAdd ? 'add' : 'sub';
       prompt = isAdd ? (a + ' + ' + b) : (a + ' − ' + b);
     }
-    return {
+    return attachStory({
       id: id || type + '-' + a + '-' + b + '-' + Math.floor(rng() * 1e6),
       type: type,
       mission: 'warmup',
@@ -527,7 +536,156 @@
       prompt: prompt,
       answer: answer,
       missCount: 0
-    };
+    }, rng, options.petName);
+  }
+
+  /** How many pictures to draw. Large numbers stay in the words, not a misleading pile. */
+  function sceneCount(n) {
+    n = parseInt(n, 10);
+    if (!(n > 0)) return 0;
+    if (n <= 10) return n;
+    return 1;
+  }
+
+  function buildStory(task, petName, which) {
+    var name = (petName && String(petName).trim()) || 'Your pet';
+    var kind = which == null ? 0 : (Math.abs(which) % 4);
+    var text;
+    var scenes;
+    if (task.type === 'mul') {
+      if (kind === 0) {
+        text = name + ' picked ' + task.a + ' strawberries for each of ' + task.b +
+          ' friends. How many strawberries is that?';
+        scenes = [
+          { icon: 'strawberry', count: sceneCount(task.a) },
+          { icon: 'friend', count: sceneCount(task.b) }
+        ];
+      } else if (kind === 1) {
+        text = name + ' sets out ' + task.b + ' plates. Each plate gets ' + task.a +
+          ' treats. How many treats is that?';
+        scenes = [
+          { icon: 'plate', count: sceneCount(task.b) },
+          { icon: 'treat', count: sceneCount(task.a) }
+        ];
+      } else if (kind === 2) {
+        text = name + ' has ' + task.b + ' baskets with ' + task.a +
+          ' toys in each. How many toys is that?';
+        scenes = [
+          { icon: 'basket', count: sceneCount(task.b) },
+          { icon: 'toy', count: sceneCount(task.a) }
+        ];
+      } else {
+        text = name + ' makes ' + task.a + ' sandwiches for each of ' + task.b +
+          ' friends. How many sandwiches is that?';
+        scenes = [
+          { icon: 'sandwich', count: sceneCount(task.a) },
+          { icon: 'friend', count: sceneCount(task.b) }
+        ];
+      }
+    } else if (task.type === 'sub') {
+      text = name + ' had ' + task.a + ' strawberries and shared ' + task.b +
+        '. How many strawberries are left?';
+      scenes = [{ icon: 'strawberry', count: sceneCount(task.a) }];
+    } else if (kind % 2 === 1) {
+      text = name + ' found ' + task.a + ' toys and ' + task.b +
+        ' treats. How many things altogether?';
+      scenes = [
+        { icon: 'toy', count: sceneCount(task.a) },
+        { icon: 'treat', count: sceneCount(task.b) }
+      ];
+    } else {
+      text = name + ' picked ' + task.a + ' strawberries and ' + task.b +
+        ' more berries. How many pieces of fruit is that?';
+      scenes = [
+        { icon: 'strawberry', count: sceneCount(task.a) },
+        { icon: 'berry', count: sceneCount(task.b) }
+      ];
+    }
+    return { text: text, scenes: scenes };
+  }
+
+  function attachStory(task, rng, petName) {
+    rng = rng || Math.random;
+    var want;
+    var which = 0;
+    if (task.id === 'warm-0') {
+      want = true;
+      which = 0;
+    } else if (task.id === 'warm-1') {
+      want = false;
+    } else {
+      want = rng() < 0.5;
+      if (want) which = Math.floor(rng() * 4);
+    }
+    task.story = want ? buildStory(task, petName, which) : null;
+    return task;
+  }
+
+  function applyMulStories(tasks, petName) {
+    var i;
+    for (i = 0; i < tasks.length; i++) {
+      if (i % 2 === 0) tasks[i].story = buildStory(tasks[i], petName, Math.floor(i / 2));
+      else tasks[i].story = null;
+    }
+    return tasks;
+  }
+
+  function iconShape(name) {
+    if (name === 'strawberry') {
+      return '<g data-icon="strawberry"><path d="M16 11 Q28 9 26 18 Q24 30 16 32 Q8 30 6 18 Q4 9 16 11 Z" fill="#d4564e"/><path d="M10 11 Q16 4 22 11" fill="#5f7a52"/><circle cx="12" cy="18" r="1.2" fill="#f0e0a0"/><circle cx="18" cy="20" r="1.2" fill="#f0e0a0"/><circle cx="14" cy="24" r="1.2" fill="#f0e0a0"/></g>';
+    }
+    if (name === 'berry') {
+      return '<g data-icon="berry"><circle cx="16" cy="18" r="10" fill="#7a4e86"/><circle cx="12" cy="16" r="1.2" fill="#f7f1e6"/><circle cx="18" cy="15" r="1.2" fill="#f7f1e6"/><circle cx="15" cy="21" r="1.2" fill="#f7f1e6"/><path d="M12 8 Q16 4 20 8" fill="#5f7a52"/></g>';
+    }
+    if (name === 'friend') {
+      return '<g data-icon="friend"><circle cx="16" cy="18" r="10" fill="#e8a05a"/><polygon points="8,12 10,4 14,11" fill="#e8a05a"/><polygon points="24,12 22,4 18,11" fill="#e8a05a"/><circle cx="12" cy="18" r="1.4" fill="#2c241c"/><circle cx="20" cy="18" r="1.4" fill="#2c241c"/><path d="M12 22 Q16 25 20 22" fill="none" stroke="#2c241c" stroke-width="1.2"/></g>';
+    }
+    if (name === 'sandwich') {
+      return '<g data-icon="sandwich"><path d="M6 14 Q16 6 26 14 L26 18 Q16 14 6 18 Z" fill="#e8c49a"/><rect x="6" y="18" width="20" height="4" fill="#7a9a68"/><path d="M6 22 Q16 28 26 22 L26 24 Q16 30 6 24 Z" fill="#c4784a"/></g>';
+    }
+    if (name === 'treat') {
+      return '<g data-icon="treat"><circle cx="16" cy="18" r="10" fill="#e8c49a"/><circle cx="12" cy="16" r="1.5" fill="#a35f38"/><circle cx="18" cy="14" r="1.5" fill="#a35f38"/><circle cx="17" cy="20" r="1.5" fill="#a35f38"/></g>';
+    }
+    if (name === 'toy') {
+      return '<g data-icon="toy"><circle cx="16" cy="18" r="10" fill="#c4784a"/><path d="M8 18 H24 M16 10 V26" stroke="#fffaf0" stroke-width="2"/></g>';
+    }
+    if (name === 'plate') {
+      return '<g data-icon="plate"><ellipse cx="16" cy="20" rx="12" ry="7" fill="#fffaf0" stroke="#c4784a" stroke-width="2"/><ellipse cx="16" cy="20" rx="6" ry="3" fill="#f0e0a0"/></g>';
+    }
+    if (name === 'basket') {
+      return '<g data-icon="basket"><path d="M8 14 H24 L22 28 H10 Z" fill="#c4784a"/><path d="M8 14 Q16 6 24 14" fill="none" stroke="#a35f38" stroke-width="2"/></g>';
+    }
+    if (name === 'cupcake') {
+      return '<g data-icon="cupcake"><path d="M10 16 Q16 8 22 16" fill="#f0a0b0"/><path d="M9 16 H23 L21 28 H11 Z" fill="#e8c49a"/></g>';
+    }
+    if (name === 'star') {
+      return '<g data-icon="star"><polygon points="16,4 19,12 28,12 21,18 23,27 16,22 9,27 11,18 4,12 13,12" fill="#e8c84a"/></g>';
+    }
+    if (name === 'heart') {
+      return '<g data-icon="heart"><path d="M16 28 L6 16 Q4 8 12 8 Q16 8 16 13 Q16 8 20 8 Q28 8 26 16 Z" fill="#c4784a"/></g>';
+    }
+    return '<g data-icon="leaf"><path d="M16 6 Q28 16 16 30 Q4 16 16 6 Z" fill="#7a9a68"/></g>';
+  }
+
+  function renderStorySvg(story) {
+    if (!story || !story.scenes || !story.scenes.length) return '';
+    var y = 2;
+    var parts = [];
+    var s;
+    var i;
+    for (s = 0; s < story.scenes.length; s++) {
+      var n = story.scenes[s].count || 0;
+      if (!n) continue;
+      var cols = Math.min(6, n);
+      for (i = 0; i < n; i++) {
+        var x = 8 + (i % cols) * 40;
+        var yy = y + Math.floor(i / cols) * 36;
+        parts.push('<g transform="translate(' + x + ' ' + yy + ')">' + iconShape(story.scenes[s].icon) + '</g>');
+      }
+      y += Math.ceil(n / cols) * 36 + 6;
+    }
+    var height = Math.max(8, y);
+    return '<svg class="story-svg" viewBox="0 0 280 ' + height + '" width="100%" role="img" aria-hidden="true">' + parts.join('') + '</svg>';
   }
 
   /** Gentle hints — never shame. */
@@ -697,6 +855,8 @@
     makeMulTaskPreferWeakFacts: makeMulTaskPreferWeakFacts,
     buildMulTasks: buildMulTasks,
     makeAddSubTask: makeAddSubTask,
+    buildStory: buildStory,
+    renderStorySvg: renderStorySvg,
     getHint: getHint,
     processMathAttempt: processMathAttempt,
     encouragement: encouragement,
