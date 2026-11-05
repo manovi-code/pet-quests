@@ -754,22 +754,21 @@ h2 {
   overflow: hidden;
   border: 1px solid var(--line);
   background: var(--cream);
-  min-height: 168px;
+  min-height: 220px;
 }
 
 .room-svg {
   display: block;
   width: 100%;
-  height: 168px;
+  height: 220px;
 }
 
 .pet-in-room {
   position: absolute;
-  left: 46%;
-  bottom: 18px;
-  width: 148px;
-  height: 148px;
-  transform: translateX(-50%);
+  left: 12px;
+  bottom: 6px;
+  width: 108px;
+  height: 108px;
   pointer-events: none;
   filter: drop-shadow(0 5px 4px rgba(60, 40, 20, 0.18));
 }
@@ -876,12 +875,14 @@ h2.section-title {
   color: var(--sage-deep);
 }
 
-.grade-list {
+.grade-list,
+.rank-list {
   display: grid;
   gap: 8px;
 }
 
-.grade-btn {
+.grade-btn,
+.rank-btn {
   min-height: var(--tap);
   border-radius: 14px;
   border: 2px solid var(--line);
@@ -890,10 +891,95 @@ h2.section-title {
   font-size: 1.05rem;
 }
 
-.grade-btn[aria-pressed='true'] {
+.grade-btn[aria-pressed='true'],
+.rank-btn[aria-pressed='true'] {
   background: #f3f7ee;
   border-color: var(--sage-deep);
   box-shadow: 0 0 0 3px rgba(122, 154, 104, 0.28);
+}
+
+.inventory,
+.item-block,
+.item-actions,
+.match-col {
+  display: grid;
+  gap: 8px;
+}
+
+.item-actions,
+.match-grid,
+.sol-top {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.item-name {
+  margin: 0;
+  font-family: var(--font);
+}
+
+.plant-svg {
+  width: 160px;
+  height: auto;
+  margin: 0 auto;
+}
+
+.match-grid {
+  align-items: start;
+}
+
+.sol-foundations,
+.sol-draw,
+.sol-col {
+  display: grid;
+  gap: 6px;
+  align-content: start;
+}
+
+.sol-table {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  padding-bottom: 4px;
+}
+
+.sol-col {
+  min-width: 64px;
+  flex: 1;
+}
+
+.sol-card {
+  min-height: 64px;
+  min-width: 56px;
+  border-radius: 10px;
+  border: 2px solid var(--sage-deep);
+  background: #fffaf0;
+  color: var(--ink);
+  font-family: var(--font);
+  font-size: 1.05rem;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.sol-card.red {
+  color: #a33b32;
+  border-color: #a33b32;
+}
+
+.sol-card.down {
+  background:
+    repeating-linear-gradient(45deg, #5f7a52, #5f7a52 6px, #7a9a68 6px, #7a9a68 12px);
+  border-color: #3d6b4f;
+  min-height: 28px;
+}
+
+.sol-card.empty {
+  background: transparent;
+  border-style: dashed;
+  min-height: 64px;
 }
 
 .ready-card {

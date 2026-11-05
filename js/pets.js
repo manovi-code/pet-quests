@@ -38,11 +38,11 @@
   ];
 
   var STAGE_LABELS = [
-    'Tiny hatchling friend',
+    'A new friend',
     'Growing steadily',
     'Getting stronger',
     'Looking confident',
-    'Habitat hero'
+    'Ready for big days'
   ];
 
   function getPet(id) {

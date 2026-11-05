@@ -30,6 +30,9 @@
   var cardNeedsContinue = false;
   var cardRewarded = false;
   var spinReels = ['star', 'leaf', 'heart'];
+  var learn = null;
+  var solitaire = null;
+  var solitaireNote = '';
 
   function $(sel) {
     return document.querySelector(sel);
@@ -57,6 +60,7 @@
     state = store.load();
     PQQuest.normalizeCourses(state);
     PQWorld.ensureWorld(state);
+    PQWorld.syncFromProgress(state);
     PQStorage.ensureWeek(state);
     if (!state.onboardingDone || !state.petId) {
       go('welcome');
@@ -80,8 +84,9 @@
     else if (screen === 'nickname') renderNickname(app);
     else if (screen === 'home') renderHome(app);
     else if (screen === 'house') renderHouse(app);
-    else if (screen === 'locked') renderLocked(app);
     else if (screen === 'library') renderLibrary(app);
+    else if (screen === 'learn') renderLearn(app);
+    else if (screen === 'solitaire') renderSolitaire(app);
     else if (screen === 'quest') renderQuest(app);
     else if (screen === 'party') renderParty(app);
     else if (screen === 'party-cards') renderPartyCards(app);
@@ -123,12 +128,12 @@
       '<main class="panel welcome">' +
       '<div class="hero-mark" aria-hidden="true">🌿</div>' +
       '<h2>Welcome to Pet Quests</h2>' +
-      '<p class="lede">Practice a little each day. Your pet grows with you. Progress stays on this device.</p>' +
+      '<p class="lede">Practice a little each day. Your pet grows with you, and your town starts at home. Progress stays on this phone.</p>' +
       '<ul class="soft-list">' +
       '<li>Warmup math</li>' +
-      '<li>A short pet story</li>' +
+      '<li>A pet story</li>' +
       '<li>Times tables practice</li>' +
-      '<li>A little neighborhood to explore</li>' +
+      '<li>A town that grows from your house</li>' +
       '<li>A party with animal friends at the end</li>' +
       '</ul>' +
       '<button type="button" class="btn primary lg" data-act="start-onboarding">Meet your pet</button>' +
@@ -190,7 +195,7 @@
       esc(nicknameDraft) +
       '" />' +
       '</label>' +
-      '<button type="button" class="btn primary lg" data-act="finish-onboarding">Enter the garden</button>' +
+      '<button type="button" class="btn primary lg" data-act="finish-onboarding">Come home</button>' +
       '<button type="button" class="btn ghost" data-act="finish-onboarding-skip">Skip for now</button>' +
       '</main>';
     var input = $('#nick-input');
@@ -225,17 +230,39 @@
     return html;
   }
 
-  function readyCardHtml() {
+  function readyCardHtml(primary) {
     var info = PQQuest.gradeReadiness(state);
-    if (!info.ready) return '';
+    if (!info.ready || !info.next) return '';
+    var label = PQStorage.rankLabel(info.next);
     return (
       '<div class="ready-card">' +
-      '<p>These problems are feeling friendly. Ready to try the next grade when you are.</p>' +
-      '<button type="button" class="btn secondary" data-act="try-next-grade">Try Grade ' +
-      info.next +
+      '<p>These problems are feeling friendly. You can try the next rank when you want.</p>' +
+      '<button type="button" class="btn ' + (primary ? 'primary' : 'secondary') + '" data-act="try-next-rank">Try ' +
+      esc(label) +
       '</button>' +
       '</div>'
     );
+  }
+
+  function missionsHere(house) {
+    var list = [];
+    if (!house) return list;
+    if (house.id === 'pet') {
+      list.push({ id: 'warmup', label: 'Warmup at the kitchen table' });
+      if (!PQWorld.isPlaceOpen(state, 'library')) list.push({ id: 'reading', label: 'Read on the cushion' });
+      if (!PQWorld.isPlaceOpen(state, 'school')) list.push({ id: 'multiply', label: 'Times tables at the desk' });
+    } else if (house.mission === 'reading') {
+      list.push({ id: 'reading', label: house.questLabel || 'Read a pet story' });
+    } else if (house.mission === 'multiply') {
+      list.push({ id: 'multiply', label: house.questLabel || 'Times tables on the board' });
+    }
+    return list;
+  }
+
+  function passageBlocks(text) {
+    return String(text || '').split(/\n\n+/).map(function (para) {
+      return '<p class="passage">' + esc(para.trim()) + '</p>';
+    }).join('');
   }
 
   function missionStillOpen(mission) {
@@ -256,30 +283,14 @@
     var note = neighborhoodNote
       ? '<p class="kind-note">' + esc(neighborhoodNote) + '</p>'
       : '';
-    var houses = PQWorld.HOUSES.map(function (house) {
+    var houses = PQWorld.visiblePlaces(state).map(function (house) {
       var title = PQWorld.houseTitle(house, name);
-      var open = PQWorld.isPlaceOpen(state, house.id);
-      if (!open) {
-        return (
-          '<button type="button" class="house-card locked" data-act="open-locked" data-house="' +
-          house.id +
-          '">' +
-          '<span class="house-art">' +
-          PQWorld.renderHouseFront(house.id) +
-          '</span>' +
-          '<strong>' +
-          esc(title) +
-          '</strong>' +
-          '<span>' +
-          esc(house.blurb) +
-          '</span>' +
-          '<em class="house-flag">Not open yet</em>' +
-          '</button>'
-        );
+      var missions = missionsHere(house);
+      var flag = '';
+      var mi;
+      for (mi = 0; mi < missions.length; mi++) {
+        if (missionStillOpen(missions[mi].id)) flag = '<em class="house-flag">Quest here</em>';
       }
-      var flag = missionStillOpen(house.mission)
-        ? '<em class="house-flag">Quest here</em>'
-        : '';
       return (
         '<button type="button" class="house-card" data-act="open-house" data-house="' +
         house.id +
@@ -297,12 +308,13 @@
         '</button>'
       );
     }).join('');
-    var nextPlace = PQWorld.nextLockedPlace(state);
-    var pathNote = nextPlace
-      ? '<p class="kind-note">' + esc(PQWorld.placeHelp(nextPlace, PQWorld.placeProgress(state, nextPlace))) + '</p>'
+    var pathNote = PQWorld.nextLockedPlace(state)
+      ? '<p class="kind-note">' + esc(done
+        ? 'A visit and a small gift can still surprise you.'
+        : PQWorld.townHint(state)) + '</p>'
       : '';
     var cta = done
-      ? '<p class="kind-note">Today’s quest is done. The party is still open, and the neighborhood is too.</p>' +
+      ? '<p class="kind-note">Today’s quest is done. The party is still open, and the town is too.</p>' +
         '<button type="button" class="btn primary lg" data-act="open-party">Visit the party</button>' +
         '<button type="button" class="btn secondary" data-act="extra-practice">Extra times tables</button>'
       : '<button type="button" class="btn primary lg" data-act="start-quest">Start today’s quest</button>';
@@ -370,21 +382,57 @@
       })
       .join('');
     var questBtn = '';
-    if (house.mission && state.courses.parts[house.mission] && !todayDone() && missionStillOpen(house.mission)) {
-      questBtn =
+    var sawOff = false;
+    missionsHere(house).forEach(function (mission) {
+      if (!state.courses.parts[mission.id]) {
+        sawOff = true;
+        return;
+      }
+      if (todayDone() && mission.id === 'multiply') {
+        questBtn += '<button type="button" class="btn secondary" data-act="extra-practice">Extra times tables</button>';
+        return;
+      }
+      if (todayDone() || !missionStillOpen(mission.id)) return;
+      questBtn +=
         '<button type="button" class="btn primary lg" data-act="start-mission" data-mission="' +
-        house.mission +
+        mission.id +
         '">' +
-        esc(house.questLabel) +
+        esc(mission.label) +
         '</button>';
-    } else if (house.mission && !state.courses.parts[house.mission]) {
-      questBtn = '<p class="plain-note">This practice is off today. You can still look around.</p>';
-    } else if (house.mission === 'multiply' && todayDone()) {
-      questBtn =
-        '<button type="button" class="btn secondary" data-act="extra-practice">Extra times tables</button>';
+    });
+    if (sawOff) questBtn += '<p class="plain-note">Some practice is off today. You can still look around.</p>';
+    var activity = PQLearn.forPlace(state, house.id);
+    var gameBtn = '';
+    if (house.id === 'parlor' && PQSolitaire.canPlay(state)) {
+      gameBtn = '<button type="button" class="btn primary lg" data-act="open-solitaire">Play solitaire</button>';
+    } else if (activity) {
+      gameBtn = '<button type="button" class="btn primary lg" data-act="open-activity">' + esc(activity.button || activity.title) + '</button>';
+    }
+    var items = PQWorld.visibleItems(state);
+    var inventory = '';
+    if (items.length) {
+      var placedHere = {};
+      PQWorld.placementsFor(state, house.id).forEach(function (p) { placedHere[p.itemId] = true; });
+      var rows = items.map(function (item) {
+        if (placedHere[item.id]) {
+          return (
+            '<div class="item-block">' +
+            '<p class="item-name">' + esc(item.name) + ' is in this room</p>' +
+            '<div class="item-actions">' +
+            '<button type="button" class="btn secondary" data-act="move-item" data-item="' + item.id + '">Move</button>' +
+            '<button type="button" class="btn secondary" data-act="return-item" data-item="' + item.id + '">Put back</button>' +
+            '</div></div>'
+          );
+        }
+        return '<button type="button" class="btn secondary" data-act="place-item" data-item="' + item.id + '">Place ' + esc(item.name) + '</button>';
+      }).join('');
+      inventory =
+        '<section class="inventory"><h2 class="section-title">Things you can place</h2>' +
+        '<p class="plain-note">Showing ' + items.length + (items.length === 1 ? ' thing' : ' things') + ' you have earned.</p>' +
+        rows + '</section>';
     }
     var petBit =
-      house.id === 'pet'
+      house.id === 'pet' || house.id === 'friend'
         ? '<div class="pet-in-room">' +
           PQPets.renderPetSvg(state.petId, state.growthStage || 0, { label: name }) +
           '</div>'
@@ -404,9 +452,11 @@
       esc(house.blurb) +
       '</p>' +
       questBtn +
+      gameBtn +
       '<div class="role-actions">' +
       buttons +
       '</div>' +
+      inventory +
       feedbackHtml +
       '</main>';
   }
@@ -489,9 +539,7 @@
       '<h2>' +
       esc(task.title) +
       '</h2>' +
-      '<p class="passage">' +
-      esc(task.text) +
-      '</p>' +
+      passageBlocks(task.text) +
       '<div class="row-actions">' +
       speakBtn +
       '<button type="button" class="btn primary lg" data-act="reading-continue">I read it</button>' +
@@ -519,9 +567,9 @@
     return (
       '<section class="reading-card">' +
       '<p class="eyebrow">From the story</p>' +
-      '<details class="passage-peek"><summary>Show story again</summary><p class="passage">' +
-      esc(task.text) +
-      '</p></details>' +
+      '<details class="passage-peek"><summary>Show story again</summary>' +
+      passageBlocks(task.text) +
+      '</details>' +
       '<h2 class="question">' +
       esc(task.question) +
       '</h2>' +
@@ -610,7 +658,7 @@
       '<h2>Wonderful work!</h2>' +
       '<p class="lede">' +
       esc(name) +
-      ' looks proud. The neighborhood grew a little too.</p>' +
+      ' looks proud. The town grew a little too.</p>' +
       (freshUnlock
         ? '<p class="kind-note">' + esc(freshUnlock.line) + '</p>'
         : '') +
@@ -632,24 +680,8 @@
           '!</p>'
         : '<p class="week-hint">Keep going at your pace. Missing a day is okay.</p>') +
       '</div>' +
-      '<button type="button" class="btn primary lg" data-act="go-home">Back to the neighborhood</button>' +
+      '<button type="button" class="btn primary lg" data-act="go-home">Back to town</button>' +
       '<button type="button" class="btn secondary" data-act="open-party">Back to the party</button>' +
-      '</main>';
-  }
-
-  function renderLocked(app) {
-    var house = PQWorld.getHouse(houseId);
-    var progress = PQWorld.placeProgress(state, house);
-    var help = PQWorld.placeHelp(house, progress);
-    app.innerHTML =
-      headerBar(house.title, { back: true }) +
-      '<main class="panel">' +
-      '<div class="house-art lone">' + PQWorld.renderHouseFront(house.id) + '</div>' +
-      '<h2>' + esc(house.title) + '</h2>' +
-      '<p class="lede">' + esc(help) + '</p>' +
-      '<p class="plain-note">Daily quests and the gift at each open place both count. Nothing here is a test.</p>' +
-      '<p class="kind-note">Quests finished: ' + progress.quests + '. Place gifts found: ' + progress.activities + '.</p>' +
-      '<button type="button" class="btn primary lg" data-act="back">Back to the neighborhood</button>' +
       '</main>';
   }
 
@@ -669,10 +701,11 @@
     app.innerHTML =
       headerBar('Extra story', { back: true }) +
       '<main class="panel">' +
+      '<div class="room-wrap">' + PQWorld.renderRoomSvg('library', state) + '</div>' +
       '<p class="lede">These stories are extra. You can read one anytime. They are not part of today’s quest.</p>' +
       '<section class="reading-card">' +
       '<h2>' + esc(book ? book.title : 'Story') + '</h2>' +
-      '<p class="passage">' + esc(book ? book.text : '') + '</p>' +
+      passageBlocks(book ? book.text : '') +
       '<div class="row-actions">' +
       speakBtn +
       '<button type="button" class="btn secondary" data-act="next-book">Another story</button>' +
@@ -786,13 +819,190 @@
       '</main>';
   }
 
+  function learnFeedback() {
+    if (!learn || (!learn.note && !learn.hint)) return '';
+    return '<div class="feedback gentle" role="status"><p>' + esc(learn.note || '') + '</p>' +
+      (learn.hint ? '<p class="hint">' + esc(learn.hint) + '</p>' : '') + '</div>';
+  }
+
+  function plantSvg(grown) {
+    var height = grown ? 46 : 24;
+    var top = 62 - height;
+    return '<svg class="plant-svg" viewBox="0 0 120 80" aria-hidden="true">' +
+      '<rect x="46" y="62" width="28" height="14" rx="3" fill="#a35f38"/>' +
+      '<rect x="58" y="' + top + '" width="4" height="' + height + '" fill="#5f7a52"/>' +
+      '<circle cx="60" cy="' + top + '" r="' + (grown ? 16 : 10) + '" fill="#7a9a68"/>' +
+      '<circle cx="' + (grown ? 44 : 50) + '" cy="' + (top + 8) + '" r="' + (grown ? 10 : 6) + '" fill="#8fa87a"/>' +
+      '</svg>';
+  }
+
+  function choiceButtons(choices, act) {
+    return (choices || []).map(function (choice, i) {
+      return '<button type="button" class="choice-btn" data-act="' + act + '" data-idx="' + i + '">' + esc(choice) + '</button>';
+    }).join('');
+  }
+
+  function renderPlay(play, progress) {
+    if (!play) return '<p class="lede">All done here.</p>';
+    if (play.kind === 'experiment') {
+      var step = progress.step || 0;
+      if (step <= 0) {
+        return '<p class="lede">' + esc(play.observe) + '</p>' + plantSvg(false) +
+          '<button type="button" class="btn primary lg" data-act="learn-continue">I looked</button>';
+      }
+      if (step === 1) {
+        return '<h2 class="question">' + esc(play.predict.q) + '</h2><div class="choices">' +
+          choiceButtons(play.predict.choices, 'learn-choice') + '</div>';
+      }
+      if (step === 2) {
+        return matchColumns(play.pairs, progress, 'Friend', 'Home');
+      }
+      return '<h2 class="question">' + esc(play.water.q) + '</h2>' + plantSvg(!!progress.grown) +
+        '<div class="choices">' + choiceButtons(play.water.choices, 'learn-choice') + '</div>';
+    }
+    if (play.kind === 'match' || play.kind === 'clues') {
+      return '<p class="lede">' + esc(play.prompt) + '</p>' + matchColumns(play.pairs, progress, 'Clue', 'Match');
+    }
+    if (play.kind === 'body') {
+      return '<p class="lede">' + esc(play.prompt) + '</p><div class="choices">' +
+        play.parts.map(function (part) {
+          var done = progress.matched && progress.matched[part.id] ? ' reveal-correct' : '';
+          return '<button type="button" class="choice-btn' + done + '" data-act="learn-part" data-id="' + part.id + '">' + esc(part.label) + '</button>';
+        }).join('') + '</div>';
+    }
+    if (play.kind === 'build') {
+      var current = play.steps[progress.step] || play.steps[play.steps.length - 1];
+      var made = (progress.picks || []).length
+        ? '<p class="kind-note">So far: ' + esc(progress.picks.join(', ')) + '</p>'
+        : '';
+      return made + '<h2 class="question">' + esc(current.prompt) + '</h2><div class="choices">' +
+        choiceButtons(current.choices, 'learn-choice') + '</div>';
+    }
+    if (play.kind === 'pattern') {
+      var order = play.colors.map(function (color) { return color.label; }).join(', then ');
+      return '<p class="lede">' + esc(play.prompt) + '</p><p class="kind-note">' + esc(order) + '</p><div class="choices">' +
+        play.colors.map(function (color) {
+          return '<button type="button" class="choice-btn" data-act="learn-color" data-id="' + color.id + '">' + esc(color.label) + '</button>';
+        }).join('') + '</div>';
+    }
+    return '<p class="lede">You can look around as long as you like.</p>';
+  }
+
+  function matchColumns(pairs, progress, leftName, rightName) {
+    var left = pairs.map(function (pair) {
+      if (progress.matched && progress.matched[pair.id]) return '';
+      var on = learn && learn.pick === pair.id ? ' reveal-correct' : '';
+      return '<button type="button" class="choice-btn' + on + '" data-act="learn-left" data-id="' + pair.id + '">' + esc(pair.left) + '</button>';
+    }).join('');
+    var right = [];
+    var seen = {};
+    pairs.forEach(function (pair) {
+      if (seen[pair.right]) return;
+      seen[pair.right] = true;
+      right.push('<button type="button" class="choice-btn" data-act="learn-right" data-id="' + esc(pair.right) + '">' + esc(pair.right) + '</button>');
+    });
+    return '<div class="match-grid"><div class="match-col"><p class="eyebrow">' + esc(leftName) + '</p>' + left +
+      '</div><div class="match-col"><p class="eyebrow">' + esc(rightName) + '</p>' + right.join('') + '</div></div>';
+  }
+
+  function renderLearn(app) {
+    if (!learn || !learn.activity) {
+      go(houseId ? 'house' : 'home');
+      return;
+    }
+    var activity = learn.activity;
+    var progress = learn.progress;
+    var house = PQWorld.getHouse(activity.id);
+    var body = '';
+    if (progress.phase === 'read') {
+      var speak = PQAudio.canSpeak()
+        ? '<button type="button" class="btn secondary" data-act="read-aloud">Read aloud</button>'
+        : '';
+      body = passageBlocks(activity.reading) + '<div class="row-actions">' + speak +
+        '<button type="button" class="btn primary lg" data-act="learn-continue">I read it</button></div>';
+    } else if (progress.phase === 'ask') {
+      var q = activity.questions[progress.qIndex];
+      body = q
+        ? '<h2 class="question">' + esc(q.q) + '</h2><div class="choices">' + choiceButtons(q.choices, 'learn-choice') + '</div>'
+        : '<p class="lede">All done here.</p>';
+    } else if (progress.phase === 'play') {
+      body = renderPlay(activity.play, progress);
+    } else {
+      body = (progress.grown ? plantSvg(true) : '') + '<p class="lede">All done here. The town is right outside.</p>';
+    }
+    app.innerHTML =
+      headerBar(house ? house.title : activity.title, { back: true }) +
+      '<main class="panel">' +
+      '<div class="room-wrap">' + PQWorld.renderRoomSvg(activity.id, state) + '</div>' +
+      '<h2>' + esc(activity.title) + '</h2>' +
+      body +
+      learnFeedback() +
+      '<button type="button" class="btn ghost" data-act="town">All done / back to town</button>' +
+      '</main>';
+  }
+
+  function solSuit(suit) {
+    if (suit === 'hearts') return '♥';
+    if (suit === 'diamonds') return '♦';
+    if (suit === 'clubs') return '♣';
+    return '♠';
+  }
+
+  function solCard(card, act, extra) {
+    extra = extra || '';
+    if (!card) {
+      return '<button type="button" class="sol-card empty" data-act="' + act + '" ' + extra + ' aria-label="Empty spot"></button>';
+    }
+    if (!card.up) return '<div class="sol-card down" aria-hidden="true"></div>';
+    var red = PQSolitaire.colorOf(card.suit) === 'red' ? ' red' : '';
+    return '<button type="button" class="sol-card' + red + '" data-act="' + act + '" ' + extra +
+      ' aria-label="' + esc(PQSolitaire.cardName(card)) + '"><span>' +
+      esc(PQSolitaire.rankLabel(card.rank) + solSuit(card.suit)) + '</span></button>';
+  }
+
+  function renderSolitaire(app) {
+    var board = '';
+    if (solitaire) {
+      var foundations = solitaire.foundations.map(function (pile, i) {
+        var card = pile.length ? pile[pile.length - 1] : null;
+        return solCard(card, 'sol-foundation', 'data-index="' + i + '"');
+      }).join('');
+      var waste = solitaire.waste.length ? solitaire.waste[solitaire.waste.length - 1] : null;
+      var columns = solitaire.tableau.map(function (col, ci) {
+        var cards = col.map(function (card, idx) {
+          return solCard(card, 'sol-tab', 'data-col="' + ci + '" data-index="' + idx + '"');
+        }).join('');
+        if (!cards) {
+          cards = '<button type="button" class="sol-card empty" data-act="sol-col" data-col="' + ci + '" aria-label="Empty column"></button>';
+        }
+        return '<div class="sol-col">' + cards + '</div>';
+      }).join('');
+      board =
+        '<div class="sol-top"><div class="sol-foundations" aria-label="Piles">' + foundations + '</div>' +
+        '<div class="sol-draw">' + solCard(waste, 'sol-waste', '') +
+        '<button type="button" class="btn secondary" data-act="sol-draw">' +
+        (solitaire.stock.length ? 'Draw' : 'Turn pile') + '</button></div></div>' +
+        '<div class="sol-table">' + columns + '</div>' +
+        '<button type="button" class="btn secondary" data-act="sol-hint">Need a hand?</button>' +
+        (solitaire.won ? '<p class="lede">All done. Every pile is built.</p>' : '');
+    }
+    app.innerHTML =
+      headerBar('Game hall', { back: true }) +
+      '<main class="panel">' +
+      '<div class="room-wrap">' + PQWorld.renderRoomSvg('parlor', state) + '</div>' +
+      '<p class="lede">Build each pile from ace upward. You can leave whenever you like.</p>' +
+      board +
+      (solitaireNote ? '<div class="feedback good" role="status"><p>' + esc(solitaireNote) + '</p></div>' : '') +
+      '<button type="button" class="btn primary lg" data-act="town">All done / back to town</button>' +
+      '</main>';
+  }
+
   function renderSettings(app) {
     PQQuest.normalizeCourses(state);
     var parts = state.courses.parts;
     var selected = {};
     state.courses.tables.forEach(function (n) { selected[n] = true; });
-    var grade = state.courses.grade;
-    var ready = PQQuest.gradeReadiness(state);
+    var rankId = state.courses.rank || PQStorage.rankFromGrade(state.courses.grade);
 
     function partButton(id, label) {
       var on = !!parts[id];
@@ -825,29 +1035,23 @@
         '</span></button>';
     }
 
-    var grades = '';
-    var g;
-    for (g = 1; g <= 5; g++) {
-      var onGrade = g === grade;
-      grades +=
-        '<button type="button" class="grade-btn" data-act="set-grade" data-grade="' +
-        g +
+    var ranks = '';
+    PQStorage.RANKS.forEach(function (rank) {
+      var onRank = rank.id === rankId;
+      ranks +=
+        '<button type="button" class="rank-btn" data-act="set-rank" data-rank="' +
+        rank.id +
         '" aria-pressed="' +
-        (onGrade ? 'true' : 'false') +
-        '">Grade ' +
-        g +
+        (onRank ? 'true' : 'false') +
+        '">' +
+        esc(rank.label) +
         '</button>';
-    }
+    });
 
     var note = settingsNote
       ? '<p class="settings-note" role="status">' + esc(settingsNote) + '</p>'
       : '';
-    var readyBlock = ready.ready
-      ? '<div class="ready-card"><p>Ready to try the next grade when you are.</p>' +
-        '<button type="button" class="btn primary" data-act="try-next-grade">Try Grade ' +
-        ready.next +
-        '</button></div>'
-      : '';
+    var readyBlock = readyCardHtml(true);
 
     app.innerHTML =
       headerBar('Settings', { back: true }) +
@@ -859,19 +1063,19 @@
       '</button>' +
       '</label>' +
       '<section class="course-settings">' +
-      '<h2 class="section-title">Grade</h2>' +
-      '<p class="plain-note">Choose the grade that feels right today. A smaller grade is always okay.</p>' +
-      '<div class="grade-list">' +
-      grades +
+      '<h2 class="section-title">Adventure rank</h2>' +
+      '<p class="plain-note">Pick the rank that feels right. Scout is the gentlest. Champion is the fullest. A smaller rank is always okay, and it changes only when you choose it.</p>' +
+      '<div class="rank-list">' +
+      ranks +
       '</div>' +
       readyBlock +
       '<h2 class="section-title">Daily quest parts</h2>' +
       '<p class="plain-note">Choose what is in the daily quest. At least one stays on.</p>' +
       partButton('warmup', 'Warmup math') +
-      partButton('reading', 'A short pet story') +
+      partButton('reading', 'A pet story') +
       partButton('multiply', 'Times tables practice') +
       '<h2 class="section-title">Times tables</h2>' +
-      '<p class="plain-note">Choose which tables to practice. At least one stays on. A lower grade uses the friendlier ones first.</p>' +
+      '<p class="plain-note">Choose which tables to practice. At least one stays on. A lower rank uses the friendlier ones first.</p>' +
       '<div class="table-grid">' +
       chips +
       '</div>' +
@@ -928,9 +1132,8 @@
         go('home');
         return;
       }
-      if (screen === 'locked') {
-        houseId = null;
-        go('home');
+      if (screen === 'learn' || screen === 'solitaire') {
+        go(houseId ? 'house' : 'home');
         return;
       }
       if (screen === 'library') {
@@ -999,7 +1202,8 @@
     if (act === 'open-house') {
       houseId = t.getAttribute('data-house') || 'pet';
       if (!PQWorld.isPlaceOpen(state, houseId)) {
-        go('locked');
+        houseId = null;
+        go('home');
         return;
       }
       roleplayNote = '';
@@ -1007,8 +1211,153 @@
       return;
     }
     if (act === 'open-locked') {
-      houseId = t.getAttribute('data-house') || 'garden';
-      go('locked');
+      go('home');
+      return;
+    }
+    if (act === 'place-item') {
+      var placed = PQWorld.placeItem(state, houseId, t.getAttribute('data-item'));
+      roleplayNote = placed
+        ? 'You placed it. You can move it or put it back.'
+        : 'This room is full. You can put something back first.';
+      save();
+      render();
+      return;
+    }
+    if (act === 'move-item') {
+      PQWorld.moveItem(state, houseId, t.getAttribute('data-item'));
+      roleplayNote = 'You moved it to a new spot.';
+      save();
+      render();
+      return;
+    }
+    if (act === 'return-item') {
+      PQWorld.returnItem(state, houseId, t.getAttribute('data-item'));
+      roleplayNote = 'You put it back with your things.';
+      save();
+      render();
+      return;
+    }
+    if (act === 'open-activity') {
+      openActivity();
+      return;
+    }
+    if (act === 'open-solitaire') {
+      openSolitaire();
+      return;
+    }
+    if (act === 'town') {
+      learn = null;
+      go('home');
+      return;
+    }
+    if (act === 'learn-continue') {
+      applyLearn({ type: 'continue' });
+      return;
+    }
+    if (act === 'learn-choice') {
+      applyLearn({ type: 'choice', index: parseInt(t.getAttribute('data-idx'), 10) });
+      return;
+    }
+    if (act === 'learn-left') {
+      if (!learn) return;
+      learn.pick = t.getAttribute('data-id');
+      learn.note = 'Now tap the match.';
+      learn.hint = '';
+      render();
+      return;
+    }
+    if (act === 'learn-right') {
+      if (!learn || !learn.pick) {
+        if (learn) {
+          learn.note = 'Tap a clue first.';
+          learn.hint = '';
+          render();
+        }
+        return;
+      }
+      var picked = learn.pick;
+      learn.pick = null;
+      applyLearn({ type: 'pair', left: picked, right: t.getAttribute('data-id') });
+      return;
+    }
+    if (act === 'learn-part') {
+      applyLearn({ type: 'part', id: t.getAttribute('data-id') });
+      return;
+    }
+    if (act === 'learn-color') {
+      applyLearn({ type: 'color', id: t.getAttribute('data-id') });
+      return;
+    }
+    if (act === 'sol-draw') {
+      if (!solitaire) return;
+      if (solitaire.stock && solitaire.stock.length) applySol({ type: 'draw' });
+      else applySol({ type: 'recycle' });
+      return;
+    }
+    if (act === 'sol-hint') {
+      if (!solitaire) return;
+      var hintMove = PQSolitaire.findMove(solitaire);
+      if (!hintMove) {
+        solitaireNote = PQSolitaire.hintMessage(solitaire);
+        render();
+        return;
+      }
+      solitaireNote = hintMove.say;
+      applySol(hintMove);
+      return;
+    }
+    if (act === 'sol-waste') {
+      if (!solitaire) return;
+      applySol({ type: 'waste-foundation' });
+      return;
+    }
+    if (act === 'sol-tab') {
+      if (!solitaire) return;
+      var col = parseInt(t.getAttribute('data-col'), 10);
+      var index = parseInt(t.getAttribute('data-index'), 10);
+      var pile = solitaire.tableau[col] || [];
+      if (index === pile.length - 1) {
+        var lifted = PQSolitaire.applyMove(solitaire, { type: 'tableau-foundation', column: col });
+        if (lifted.ok) {
+          solitaireNote = lifted.message;
+          save();
+          render();
+          return;
+        }
+      }
+      if (solitaire.pick && solitaire.pick.kind === 'tableau' && solitaire.pick.column !== col) {
+        var fromPick = solitaire.pick;
+        solitaire.pick = null;
+        applySol({ type: 'tableau-tableau', from: fromPick.column, to: col, index: fromPick.index });
+        return;
+      }
+      if (solitaire.pick && solitaire.pick.kind === 'waste') {
+        solitaire.pick = null;
+        applySol({ type: 'waste-tableau', column: col });
+        return;
+      }
+      solitaire.pick = { kind: 'tableau', column: col, index: index };
+      solitaireNote = 'Tap the column where this card should go.';
+      render();
+      return;
+    }
+    if (act === 'sol-col') {
+      if (!solitaire || !solitaire.pick) return;
+      var targetCol = parseInt(t.getAttribute('data-col'), 10);
+      var drop = solitaire.pick;
+      solitaire.pick = null;
+      if (drop.kind === 'waste') applySol({ type: 'waste-tableau', column: targetCol });
+      else applySol({ type: 'tableau-tableau', from: drop.column, to: targetCol, index: drop.index });
+      return;
+    }
+    if (act === 'sol-foundation') {
+      if (!solitaire) return;
+      if (solitaire.pick && solitaire.pick.kind === 'tableau') {
+        applySol({ type: 'tableau-foundation', column: solitaire.pick.column });
+        solitaire.pick = null;
+        return;
+      }
+      applySol({ type: 'waste-foundation' });
       return;
     }
     if (act === 'role-act') {
@@ -1048,11 +1397,15 @@
       toggleTable(parseInt(t.getAttribute('data-table'), 10));
       return;
     }
+    if (act === 'set-rank') {
+      setRank(t.getAttribute('data-rank'));
+      return;
+    }
     if (act === 'set-grade') {
       setGrade(parseInt(t.getAttribute('data-grade'), 10));
       return;
     }
-    if (act === 'try-next-grade') {
+    if (act === 'try-next-rank' || act === 'try-next-grade') {
       tryNextGrade();
       return;
     }
@@ -1157,6 +1510,10 @@
       return;
     }
     if (act === 'read-aloud') {
+      if (screen === 'learn' && learn && learn.activity && learn.activity.reading) {
+        PQAudio.speak(learn.activity.reading, true);
+        return;
+      }
       if (screen === 'library') {
         var book = currentBook();
         if (book && book.text) PQAudio.speak(book.text, true);
@@ -1481,17 +1838,33 @@
     rerenderSettings();
   }
 
+  function rankNote(grade, started) {
+    var label = PQStorage.rankLabel(grade);
+    if (started) return label + ' starts with tomorrow\u2019s quest.';
+    return label + ' is on for today\u2019s quest.';
+  }
+
+  function setRank(rankId) {
+    var grade = PQStorage.gradeFromRank(rankId);
+    if (!grade) return;
+    setGrade(grade);
+  }
+
   function setGrade(grade) {
     if (!(grade >= 1 && grade <= 5)) return;
     PQQuest.normalizeCourses(state);
+    var today = PQStorage.localDateKey();
+    var started = !!(state.daily && state.daily.dateKey === today && PQQuest.questStarted(state.daily));
     if (state.courses.grade === grade) {
+      state.courses.rank = PQStorage.rankFromGrade(grade);
       if (screen === 'settings') rerenderSettings();
       return;
     }
     state.courses.grade = grade;
+    state.courses.rank = PQStorage.rankFromGrade(grade);
     PQQuest.stampGradeProgress(state);
-    settingsNote = '';
-    neighborhoodNote = '';
+    settingsNote = rankNote(grade, started);
+    neighborhoodNote = settingsNote;
     state._practiceTask = null;
     PQQuest.ensureTodayQuest(state);
     save();
@@ -1500,10 +1873,16 @@
   }
 
   function tryNextGrade() {
+    var info = PQQuest.gradeReadiness(state);
+    if (!info.ready || !info.next) return;
+    var nextLabel = PQStorage.rankLabel(info.next);
+    var currentLabel = PQStorage.rankLabel(info.grade);
+    if (!window.confirm('Try the ' + nextLabel + ' rank? You can come back to ' + currentLabel + ' whenever you like.')) return;
     var ok = PQQuest.applyNextGrade(state);
     if (!ok) return;
-    neighborhoodNote = 'Grade ' + state.courses.grade + ' is on.';
-    settingsNote = 'Grade ' + state.courses.grade + ' is on.';
+    state.courses.rank = PQStorage.rankFromGrade(state.courses.grade);
+    neighborhoodNote = nextLabel + ' is the rank for now.';
+    settingsNote = neighborhoodNote;
     state._practiceTask = null;
     PQQuest.ensureTodayQuest(state);
     save();
@@ -1512,11 +1891,49 @@
     else render();
   }
 
+  function applyLearn(input) {
+    if (!learn || !learn.activity) return;
+    var result = PQLearn.act(learn.activity, learn.progress, input);
+    learn.progress = result.progress;
+    learn.note = result.message;
+    learn.hint = result.hint;
+    if (result.message) PQAudio.play(result.done ? 'correct' : 'tap', state.soundOn);
+    render();
+  }
+
+  function openActivity() {
+    var activity = PQLearn.forPlace(state, houseId);
+    if (!activity) return;
+    learn = { activity: activity, progress: PQLearn.begin(activity), note: '', hint: '', pick: null };
+    go('learn');
+  }
+
+  function openSolitaire() {
+    if (!PQSolitaire.canPlay(state)) return;
+    if (solitaire && !solitaire.won) {
+      go('solitaire');
+      return;
+    }
+    var opened = PQSolitaire.openGame(state, Math.random, PQStorage.localDateKey());
+    solitaire = opened.game;
+    solitaireNote = opened.message;
+    if (opened.ok) save();
+    go('solitaire');
+  }
+
+  function applySol(move) {
+    if (!solitaire) return;
+    var result = PQSolitaire.applyMove(solitaire, move);
+    solitaireNote = result.message;
+    if (result.ok) PQAudio.play(result.won ? 'celebrate' : 'tap', state.soundOn);
+    render();
+  }
+
   function missionDoneCopy(mission) {
     if (mission === 'warmup') return 'Kitchen warmup is done. You can look around or visit another house.';
     if (mission === 'reading') return 'That story is finished. Nice reading.';
     if (mission === 'multiply') return 'Times tables in the schoolhouse are done for now.';
-    return 'That part is done. The neighborhood is still here.';
+    return 'That part is done. The town is still here.';
   }
 
   function advanceTask() {
@@ -1536,7 +1953,7 @@
       var finishedMission = questFocus;
       questFocus = null;
       save();
-      houseId = PQWorld.houseIdForMission(finishedMission) || houseId;
+      houseId = PQWorld.houseIdForMission(finishedMission, state) || houseId;
       roleplayNote = missionDoneCopy(finishedMission);
       go('house');
       return;

@@ -1,13 +1,13 @@
 # Pet Quests
 
-A phone-first practice game for a 5th grader: short daily quests with a pet that grows as she plays.
+A phone-first practice game: short daily quests with a pet, and a town that starts at her house and grows as she plays.
 
 ## What it is
 
-- **Warmup** addition and subtraction, sized to a grade setting (Grade 1 is single-digit; the default is Grade 2, within 20)
-- **One** short pet-themed reading passage with a few comprehension questions (optional read-aloud)
-- **Times tables** for the tables and grade a parent leaves on, spread across the week
-- A small **neighborhood** of houses for pretend play. Finishing quests adds a furnishing or room. Nothing to fail there.
+- **Warmup** addition and subtraction, sized to an adventure rank (Scout is the gentlest; Explorer is the usual start, within 20)
+- **One** pet story with a few comprehension questions. Stories get longer at higher ranks. Read-aloud is optional and never starts by itself.
+- **Times tables** for the tables a parent leaves on, spread across the week
+- A **town** that begins with only her house. New places and things to place appear as she finishes quests and visits. Anything she has not earned stays hidden. Extra places are for exploring, not a longer school day.
 
 Progress, pet nickname, and settings stay in **this device’s browser storage only**. There is no sign-in, no account, no ads, and no analytics.
 
@@ -35,7 +35,7 @@ You can also open `index.html` directly as a file in many browsers; a tiny local
 - Progress, the pet nickname, and settings stay on this device only. Nothing is sent to an account or server.
 - On iPhone Safari: Share → **Add to Home Screen**.
 - Sound can be toggled on the home screen / header.
-- **Settings** chooses the grade (1–5), which parts of the daily quest are on, and which times tables to practice. A smaller grade is always okay. The grade does not jump up by itself.
+- **Settings** chooses an adventure rank (Scout, Explorer, Ranger, Keeper, or Champion), which parts of the daily quest are on, and which times tables to practice. A smaller rank is always okay. The rank does not jump up by itself.
 - If today’s quest has not been started, those choices update it now. A quest already started stays as it is until tomorrow.
 - **Settings → Reset all progress** clears everything saved for Pet Quests on that device.
 - Weekly goal default: finish **5 daily quests** this week (Monday–Sunday, device local time). Missing a day is okay — there is no punishing streak break.

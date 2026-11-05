@@ -16,6 +16,48 @@
   // by mergeDeep so a saved pet and quest history are not wiped.
   var SCHEMA_VERSION = 1;
 
+  var RANKS = [
+    { id: 'scout', level: 1, label: 'Scout' },
+    { id: 'explorer', level: 2, label: 'Explorer' },
+    { id: 'ranger', level: 3, label: 'Ranger' },
+    { id: 'keeper', level: 4, label: 'Keeper' },
+    { id: 'champion', level: 5, label: 'Champion' }
+  ];
+
+  function clampLevel(grade) {
+    var n = parseInt(grade, 10);
+    if (n >= 1 && n <= 5) return n;
+    return 2;
+  }
+
+  function rankFromGrade(grade) {
+    var level = clampLevel(grade);
+    var i;
+    for (i = 0; i < RANKS.length; i++) {
+      if (RANKS[i].level === level) return RANKS[i].id;
+    }
+    return 'explorer';
+  }
+
+  function gradeFromRank(rank) {
+    var id = String(rank || '').toLowerCase();
+    var i;
+    for (i = 0; i < RANKS.length; i++) {
+      if (RANKS[i].id === id) return RANKS[i].level;
+    }
+    return 0;
+  }
+
+  function rankLabel(gradeOrRank) {
+    var level = gradeFromRank(gradeOrRank);
+    if (!level) level = clampLevel(gradeOrRank);
+    var i;
+    for (i = 0; i < RANKS.length; i++) {
+      if (RANKS[i].level === level) return RANKS[i].label;
+    }
+    return 'Explorer';
+  }
+
   function defaultState() {
     return {
       version: SCHEMA_VERSION,
@@ -34,7 +76,8 @@
           multiply: true
         },
         tables: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
-        grade: 2
+        grade: 2,
+        rank: 'explorer'
       },
       world: {
         unlocks: [],
@@ -44,6 +87,12 @@
         questsFinished: 0,
         activitiesDone: 0,
         hintTokens: 0,
+        placements: {},
+        migrateTown: false,
+        solitaire: {
+          dateKey: null,
+          deals: 0
+        },
         activity: {
           dateKey: null,
           used: {}
@@ -90,7 +139,7 @@
           return defaultState();
         }
         var base = defaultState();
-        return mergeDeep(base, data);
+        return migrateLoaded(mergeDeep(base, data), data);
       } catch (e) {
         return defaultState();
       }
@@ -124,6 +173,61 @@
       save: save,
       clear: clear
     };
+  }
+
+  /**
+   * Old saves stored a number called grade. Map it onto the adventure rank
+   * without touching the pet, prizes, or quest history.
+   * Saves from before the town update have no placements object; those get
+   * a one-time flag so library and school can return on the new map.
+   */
+  function migrateLoaded(state, raw) {
+    raw = raw || {};
+    var rawCourses = raw.courses && typeof raw.courses === 'object' && !Array.isArray(raw.courses)
+      ? raw.courses
+      : {};
+    var rawSettings = raw.settings && typeof raw.settings === 'object' && !Array.isArray(raw.settings)
+      ? raw.settings
+      : {};
+    var hadRank = rawCourses.rank != null && String(rawCourses.rank) !== '';
+    var hadGrade = rawCourses.grade != null && rawCourses.grade !== '';
+    var hadSettings = rawSettings.grade != null && rawSettings.grade !== '';
+    var level = 0;
+    if (hadRank && hadGrade) {
+      var fromRank = gradeFromRank(rawCourses.rank);
+      var fromGrade = clampLevel(rawCourses.grade);
+      // The number is what math already used. If it disagrees with a rank
+      // label, keep her current difficulty and rename the label to match.
+      level = fromRank === fromGrade ? fromRank : fromGrade;
+    } else if (hadRank) {
+      level = gradeFromRank(rawCourses.rank);
+    } else if (hadSettings) {
+      level = clampLevel(rawSettings.grade);
+    } else if (hadGrade) {
+      level = clampLevel(rawCourses.grade);
+    }
+    if (!level) level = clampLevel(state.courses && state.courses.grade);
+    if (!state.courses || typeof state.courses !== 'object') state.courses = {};
+    state.courses.grade = level;
+    state.courses.rank = rankFromGrade(level);
+
+    var rawWorld = raw.world && typeof raw.world === 'object' && !Array.isArray(raw.world)
+      ? raw.world
+      : null;
+    var legacyTown = !rawWorld || !Object.prototype.hasOwnProperty.call(rawWorld, 'placements');
+    var progress = false;
+    if (rawWorld) {
+      if (rawWorld.unlocks && rawWorld.unlocks.length) progress = true;
+      if (rawWorld.places && rawWorld.places.length) progress = true;
+      if (rawWorld.questsFinished > 0) progress = true;
+      if (rawWorld.questDates && rawWorld.questDates.length) progress = true;
+      if (rawWorld.prizes && rawWorld.prizes.length) progress = true;
+    }
+    if ((raw.growthPoints || 0) > 0) progress = true;
+    if (raw.onboardingDone && raw.petId) progress = true;
+    if (!state.world || typeof state.world !== 'object') state.world = {};
+    state.world.migrateTown = !!(legacyTown && progress);
+    return state;
   }
 
   function mergeDeep(base, overlay) {
@@ -210,6 +314,11 @@
   return {
     createStore: createStore,
     defaultState: defaultState,
+    RANKS: RANKS,
+    clampLevel: clampLevel,
+    rankFromGrade: rankFromGrade,
+    gradeFromRank: gradeFromRank,
+    rankLabel: rankLabel,
     localDateKey: localDateKey,
     localDayIndex: localDayIndex,
     localWeekKey: localWeekKey,
