@@ -12,6 +12,8 @@
   'use strict';
 
   var STORAGE_KEY = 'petquests_v1';
+  // Stay on schema 1. New fields are added in defaultState() and filled in
+  // by mergeDeep so a saved pet and quest history are not wiped.
   var SCHEMA_VERSION = 1;
 
   function defaultState() {
@@ -25,6 +27,18 @@
       soundOn: true,
       tableStats: {},
       factStats: {},
+      courses: {
+        parts: {
+          warmup: true,
+          reading: true,
+          multiply: true
+        },
+        tables: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
+        grade: 2
+      },
+      world: {
+        unlocks: []
+      },
       daily: {
         dateKey: null,
         completed: false,
@@ -127,6 +141,13 @@
     return d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate());
   }
 
+  /** Monday = 0 … Sunday = 6, in the same local week as localWeekKey. */
+  function localDayIndex(d) {
+    d = d || new Date();
+    var day = d.getDay(); // 0 Sun .. 6 Sat
+    return day === 0 ? 6 : day - 1;
+  }
+
   /** Monday–Sunday week key based on local Monday of the week containing d. */
   function localWeekKey(d) {
     d = d ? new Date(d.getTime()) : new Date();
@@ -173,6 +194,7 @@
     createStore: createStore,
     defaultState: defaultState,
     localDateKey: localDateKey,
+    localDayIndex: localDayIndex,
     localWeekKey: localWeekKey,
     ensureWeek: ensureWeek,
     markDailyComplete: markDailyComplete,
