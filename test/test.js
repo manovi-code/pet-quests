@@ -13,7 +13,10 @@ var PQMath = require(path.join(root, 'math.js'));
 var PQReading = require(path.join(root, 'reading.js'));
 var PQQuest = require(path.join(root, 'quest.js'));
 var PQWorld = require(path.join(root, 'world.js'));
+var PQLearn = require(path.join(root, 'learn.js'));
+var PQSolitaire = require(path.join(root, 'solitaire.js'));
 var PQParty = require(path.join(root, 'party.js'));
+var fs = require('fs');
 
 var passed = 0;
 var failed = 0;
@@ -427,7 +430,7 @@ test('today line names the focus tables', function () {
   });
   assert.ok(text.tablesLine.indexOf('2s and 5s') !== -1);
   assert.ok(text.partsLine.indexOf('warmup math') !== -1);
-  assert.ok(text.partsLine.indexOf('short pet story') !== -1);
+  assert.ok(text.partsLine.indexOf('pet story') !== -1);
 });
 
 test('new course fields merge without wiping pet progress', function () {
@@ -637,26 +640,41 @@ test('story-math numbers honor grade caps', function () {
   assert.ok(sawStory && sawPlain, 'picture stories are mixed with plain problems');
 });
 
-test('new locations start locked except the original four', function () {
+test('new games show only the house and hide locked places and items', function () {
   var state = PQStorage.defaultState();
-  ['pet', 'cottage', 'library', 'school'].forEach(function (id) {
-    assert.strictEqual(PQWorld.isPlaceOpen(state, id), true, id);
-  });
-  ['garden', 'bakery', 'pond', 'friend'].forEach(function (id) {
+  var visible = PQWorld.visiblePlaces(state);
+  assert.strictEqual(visible.length, 1);
+  assert.strictEqual(visible[0].id, 'pet');
+  var label = PQWorld.mapLabel(state, 'Maple');
+  assert.ok(label.indexOf('Library') === -1);
+  assert.ok(label.indexOf('Zoo') === -1);
+  assert.ok(label.indexOf('parlor') === -1);
+  assert.ok(!/not open|locked/i.test(label));
+  ['library', 'school', 'garden', 'zoo', 'vet', 'police', 'parlor'].forEach(function (id) {
     assert.strictEqual(PQWorld.isPlaceOpen(state, id), false, id);
+    assert.ok(!PQWorld.visiblePlaces(state).some(function (house) { return house.id === id; }));
   });
+  assert.strictEqual(PQWorld.visibleItems(state).length, 0);
+  assert.ok(PQWorld.allItems().length >= 40);
+  PQWorld.allItems().forEach(function (item) {
+    assert.ok(!PQWorld.visibleItems(state).some(function (shown) { return shown.id === item.id; }));
+  });
+  assert.strictEqual(PQWorld.placeItem(state, 'pet', 'vet-heart'), null);
   var help = PQWorld.placeHelp(PQWorld.getHouse('garden'), PQWorld.placeProgress(state, PQWorld.getHouse('garden')));
-  assert.ok(/garden/i.test(help));
   assert.ok(/quest/i.test(help));
+  assert.ok(!/garden/i.test(help));
 
   PQWorld.noteQuestFinished(state, '2026-11-05');
-  assert.strictEqual(PQWorld.isPlaceOpen(state, 'garden'), false, 'a quest alone does not open the garden');
+  assert.strictEqual(PQWorld.isPlaceOpen(state, 'library'), true);
+  assert.strictEqual(PQWorld.isPlaceOpen(state, 'zoo'), false);
+  assert.ok(PQWorld.mapLabel(state, 'Maple').indexOf('Library') !== -1);
+  assert.ok(PQWorld.mapLabel(state, 'Maple').indexOf('Zoo') === -1);
   var gift = PQWorld.playAction('pet', 'surprise', state, { petName: 'Maple', dateKey: '2026-11-05', step: 0 });
   assert.ok(gift.prize && gift.prize.name);
   assert.ok(/saved on this device/i.test(gift.message));
   assert.ok(!/wrong|fail|lose|shame/i.test(gift.message));
-  assert.strictEqual(PQWorld.isPlaceOpen(state, 'garden'), true);
-  assert.ok(PQWorld.isPlaceOpen(state, 'bakery') === false);
+  assert.strictEqual(PQWorld.isPlaceOpen(state, 'school'), true);
+  assert.strictEqual(PQWorld.isPlaceOpen(state, 'parlor'), false);
 
   var before = state.world.prizes.length;
   var activities = state.world.activitiesDone;
@@ -671,6 +689,19 @@ test('new locations start locked except the original four', function () {
   assert.ok(hinted.prize);
   assert.ok(state.world.hintTokens >= 1);
   assert.ok(!/wrong|fail|lose|shame/i.test(hinted.message));
+
+  var bowl = PQWorld.grantNextUnlock(state);
+  assert.strictEqual(bowl.id, 'pet-bowl');
+  assert.ok(PQWorld.placeItem(state, 'pet', 'pet-bowl'));
+  assert.strictEqual(PQWorld.placeItem(state, 'pet', 'zoo-leaf'), null);
+  var shownIds = PQWorld.visibleItems(state).map(function (item) { return item.id; });
+  assert.ok(shownIds.indexOf('pet-bowl') !== -1);
+  assert.strictEqual(shownIds.indexOf('zoo-leaf'), -1);
+  assert.strictEqual(shownIds.indexOf('parlor-mat'), -1);
+  var moved = PQWorld.moveItem(state, 'pet', 'pet-bowl');
+  assert.ok(moved && moved.slot !== 0);
+  assert.strictEqual(PQWorld.returnItem(state, 'pet', 'pet-bowl'), true);
+  assert.strictEqual(PQWorld.placementsFor(state, 'pet').length, 0);
 });
 
 test('location prizes persist without wiping the pet', function () {
@@ -696,8 +727,9 @@ test('location prizes persist without wiping the pet', function () {
   assert.strictEqual(loaded.petId, 'kitten');
   assert.strictEqual(loaded.petName, 'Maple');
   assert.strictEqual(loaded.growthPoints, 10);
-  assert.deepStrictEqual(loaded.world.unlocks, ['pet-bowl']);
-  assert.ok(loaded.world.places.indexOf('garden') !== -1);
+  assert.ok(loaded.world.unlocks.indexOf('pet-bowl') !== -1);
+  assert.ok(loaded.world.places.indexOf('library') !== -1);
+  assert.strictEqual(loaded.world.places.indexOf('parlor'), -1);
   assert.ok(loaded.world.prizes.length >= 1);
   assert.ok(loaded.world.prizes[0].name);
 });
@@ -854,6 +886,197 @@ test('reading bank grew and grade 1–2 stays simpler than grade 4–5', functio
   assert.ok(books[0].text.indexOf('Maple') !== -1);
   assert.ok(books[0].text.indexOf('{name}') === -1);
   assert.ok(books[0].level <= books[books.length - 1].level);
+});
+
+function wordsIn(text) {
+  return wordCount(text);
+}
+
+function parasIn(text) {
+  return String(text).split(/\n\n+/).length;
+}
+
+test('champion reading is longer and richer than scout reading', function () {
+  var scoutWords = 0;
+  var scoutParas = 0;
+  var scoutN = 0;
+  var champWords = 0;
+  var champParas = 0;
+  var champN = 0;
+  PQReading.PASSAGES.forEach(function (p) {
+    if (p.level === 1) {
+      scoutWords += wordsIn(p.text);
+      scoutParas += parasIn(p.text);
+      scoutN += 1;
+    }
+    if (p.level === 3) {
+      champWords += wordsIn(p.text);
+      champParas += parasIn(p.text);
+      champN += 1;
+    }
+  });
+  assert.ok(scoutN >= 8 && champN >= 4);
+  assert.ok(champWords / champN > (scoutWords / scoutN) * 1.8);
+  assert.ok(champParas / champN > scoutParas / scoutN);
+  var scoutPick = PQReading.pickPassage([], lcg(2), { grade: 1 });
+  var champPick = PQReading.pickPassage([], lcg(9), { grade: 5 });
+  assert.strictEqual(scoutPick.level, 1);
+  assert.strictEqual(champPick.level, 3);
+  var scoutBook = 0;
+  var champBook = 0;
+  PQReading.LIBRARY_BOOKS.forEach(function (book) {
+    if (book.level === 1) scoutBook = Math.max(scoutBook, wordsIn(book.text));
+    if (book.level === 3) champBook = Math.max(champBook, wordsIn(book.text));
+  });
+  assert.ok(champBook > scoutBook * 2);
+});
+
+test('old saves map grade to adventure rank without wiping the pet', function () {
+  assert.strictEqual(PQStorage.SCHEMA_VERSION, 1);
+  var mem = {};
+  var raw = {
+    getItem: function (k) { return Object.prototype.hasOwnProperty.call(mem, k) ? mem[k] : null; },
+    setItem: function (k, v) { mem[k] = String(v); },
+    removeItem: function (k) { delete mem[k]; }
+  };
+  var s = PQStorage.createStore(raw);
+  mem[s.STORAGE_KEY] = JSON.stringify({
+    version: 1,
+    onboardingDone: true,
+    petId: 'owl',
+    petName: 'Pip',
+    growthStage: 2,
+    growthPoints: 30,
+    courses: { grade: 4, parts: { warmup: true, reading: true, multiply: true }, tables: [2, 5] },
+    world: { unlocks: ['pet-bowl', 'library-seat'], places: ['garden'], prizes: [{ id: 'pet-sticker', name: 'a paw-print sticker', kind: 'sticker' }] }
+  });
+  var loaded = s.load();
+  assert.strictEqual(loaded.petId, 'owl');
+  assert.strictEqual(loaded.petName, 'Pip');
+  assert.strictEqual(loaded.growthPoints, 30);
+  assert.strictEqual(loaded.courses.grade, 4);
+  assert.strictEqual(loaded.courses.rank, 'keeper');
+  assert.deepStrictEqual(loaded.world.unlocks, ['pet-bowl', 'library-seat']);
+  assert.ok(loaded.world.places.indexOf('garden') !== -1);
+  assert.strictEqual(loaded.world.prizes[0].name, 'a paw-print sticker');
+  PQWorld.syncFromProgress(loaded);
+  assert.strictEqual(PQWorld.isPlaceOpen(loaded, 'library'), true);
+  assert.strictEqual(PQWorld.isPlaceOpen(loaded, 'school'), true);
+  assert.strictEqual(PQWorld.isPlaceOpen(loaded, 'parlor'), false);
+  assert.strictEqual(loaded.petId, 'owl');
+
+  mem[s.STORAGE_KEY] = JSON.stringify({
+    version: 1,
+    onboardingDone: true,
+    petId: 'kitten',
+    petName: 'Maple',
+    growthPoints: 10,
+    settings: { grade: 1 }
+  });
+  var fromSettings = s.load();
+  assert.strictEqual(fromSettings.petId, 'kitten');
+  assert.strictEqual(fromSettings.petName, 'Maple');
+  assert.strictEqual(fromSettings.courses.grade, 1);
+  assert.strictEqual(fromSettings.courses.rank, 'scout');
+  assert.strictEqual(PQStorage.SCHEMA_VERSION, 1);
+});
+
+test('zoo vet police and solitaire stay gated until unlock', function () {
+  var fresh = PQStorage.defaultState();
+  fresh.petId = 'bunny';
+  assert.deepStrictEqual(PQLearn.availableIds(fresh), []);
+  assert.strictEqual(PQLearn.forPlace(fresh, 'zoo'), null);
+  assert.strictEqual(PQLearn.forPlace(fresh, 'vet'), null);
+  assert.strictEqual(PQLearn.forPlace(fresh, 'police'), null);
+  assert.strictEqual(PQSolitaire.canPlay(fresh), false);
+  assert.strictEqual(PQSolitaire.openGame(fresh, lcg(1), '2026-11-05').game, null);
+
+  fresh.world.places = ['zoo', 'vet', 'police', 'parlor'];
+  fresh.courses.grade = 1;
+  fresh.courses.rank = 'scout';
+  var scoutZoo = PQLearn.forPlace(fresh, 'zoo');
+  var scoutVet = PQLearn.forPlace(fresh, 'vet');
+  var scoutPolice = PQLearn.forPlace(fresh, 'police');
+  assert.ok(scoutZoo && scoutZoo.reading);
+  assert.ok(scoutVet && scoutVet.play && scoutVet.play.kind === 'body');
+  assert.ok(scoutPolice && scoutPolice.play && scoutPolice.play.kind === 'clues');
+  fresh.courses.grade = 5;
+  fresh.courses.rank = 'champion';
+  var champZoo = PQLearn.forPlace(fresh, 'zoo');
+  var champVet = PQLearn.forPlace(fresh, 'vet');
+  var champPolice = PQLearn.forPlace(fresh, 'police');
+  assert.ok(wordsIn(champZoo.reading) > wordsIn(scoutZoo.reading));
+  assert.ok(champZoo.questions.length >= scoutZoo.questions.length);
+  assert.ok(wordsIn(champVet.reading) > wordsIn(scoutVet.reading));
+  assert.ok(champVet.play.parts.length >= scoutVet.play.parts.length);
+  assert.ok(champPolice.play.pairs.length >= scoutPolice.play.pairs.length);
+  assert.ok(!/medicine|diagnos|surgery|sick/i.test(champVet.reading));
+  var progress = PQLearn.begin(scoutZoo);
+  var looked = PQLearn.act(scoutZoo, progress, { type: 'continue' });
+  assert.ok(!/wrong|fail|lose|shame/i.test(looked.message + looked.hint));
+  assert.strictEqual(PQSolitaire.canPlay(fresh), true);
+});
+
+test('solitaire has no wagering and scout is gentler than champion', function () {
+  var src = fs.readFileSync(path.join(root, 'solitaire.js'), 'utf8');
+  assert.ok(!/wager|betting|jackpot|losing streak|\bcoins?\b/i.test(src));
+  var scout = PQSolitaire.createGame(1, lcg(3));
+  var champ = PQSolitaire.createGame(5, lcg(4));
+  assert.ok(PQSolitaire.cardCount(champ) > PQSolitaire.cardCount(scout));
+  assert.ok(PQSolitaire.faceDownCount(champ) > PQSolitaire.faceDownCount(scout));
+  assert.ok(!scout.coins && !scout.bet && !scout.wager);
+  var guard = 0;
+  var solved = false;
+  while (!scout.won && guard < 60) {
+    var move = PQSolitaire.findMove(scout);
+    if (!move) break;
+    var result = PQSolitaire.applyMove(scout, move);
+    assert.ok(!/wager|bet|coin|jackpot|shame/i.test(result.message));
+    if (result.won) solved = true;
+    guard += 1;
+  }
+  assert.ok(solved, 'hint path should finish a scout game');
+  var hint = PQSolitaire.hintMessage(champ);
+  assert.ok(!/wager|bet|coin|jackpot/i.test(hint));
+  assert.ok(/town/i.test(PQSolitaire.exitMessage()));
+  var state = PQStorage.defaultState();
+  state.world.places = ['parlor'];
+  var first = PQSolitaire.openGame(state, lcg(1), '2026-11-05');
+  var second = PQSolitaire.openGame(state, lcg(1), '2026-11-05');
+  var third = PQSolitaire.openGame(state, lcg(1), '2026-11-05');
+  var rested = PQSolitaire.openGame(state, lcg(1), '2026-11-05');
+  assert.ok(first.ok && second.ok && third.ok);
+  assert.strictEqual(rested.resting, true);
+  assert.strictEqual(rested.game, null);
+  assert.ok(/town/i.test(rested.message));
+  assert.ok(!/wager|bet|coin|streak/i.test(rested.message));
+});
+
+test('schema version stays 1 while placements survive a reload', function () {
+  assert.strictEqual(PQStorage.SCHEMA_VERSION, 1);
+  var mem = {};
+  var raw = {
+    getItem: function (k) { return Object.prototype.hasOwnProperty.call(mem, k) ? mem[k] : null; },
+    setItem: function (k, v) { mem[k] = String(v); },
+    removeItem: function (k) { delete mem[k]; }
+  };
+  var s = PQStorage.createStore(raw);
+  var state = s.defaultState();
+  state.onboardingDone = true;
+  state.petId = 'puppy';
+  state.petName = 'Pip';
+  state.courses.grade = 3;
+  state.courses.rank = 'ranger';
+  PQWorld.grantNextUnlock(state);
+  PQWorld.placeItem(state, 'pet', 'pet-bowl');
+  assert.strictEqual(s.save(state), true);
+  var loaded = s.load();
+  assert.strictEqual(loaded.version, 1);
+  assert.strictEqual(loaded.petName, 'Pip');
+  assert.strictEqual(loaded.courses.rank, 'ranger');
+  assert.strictEqual(loaded.courses.grade, 3);
+  assert.strictEqual(loaded.world.placements.pet[0].itemId, 'pet-bowl');
+  assert.strictEqual(PQWorld.visiblePlaces(loaded).length, 1);
 });
 
 console.log('\n' + passed + ' passed, ' + failed + ' failed');

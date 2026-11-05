@@ -61,7 +61,9 @@
     tables.sort(function (a, b) { return a - b; });
 
     var grade = parseInt(incoming.grade, 10);
-    if (!(grade >= 1 && grade <= 5)) grade = 2;
+    var fromRank = PQStorage.gradeFromRank ? PQStorage.gradeFromRank(incoming.rank) : 0;
+    if (!(grade >= 1 && grade <= 5)) grade = fromRank || 2;
+    var rank = PQStorage.rankFromGrade ? PQStorage.rankFromGrade(grade) : 'explorer';
 
     var gradeMarked = {};
     var markedIn = incoming.gradeMarked;
@@ -75,7 +77,7 @@
       }
     }
 
-    state.courses = { parts: parts, tables: tables, grade: grade, gradeMarked: gradeMarked };
+    state.courses = { parts: parts, tables: tables, grade: grade, rank: rank, gradeMarked: gradeMarked };
     return state.courses;
   }
 
@@ -429,7 +431,7 @@
     var parts = plan.parts || {};
     var names = [];
     if (parts.warmup) names.push('warmup math');
-    if (parts.reading) names.push('a short pet story');
+    if (parts.reading) names.push('a pet story');
     if (parts.multiply) names.push('times tables');
     var partsLine = '';
     if (names.length === 1) partsLine = 'Today includes ' + names[0] + '.';

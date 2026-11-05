@@ -691,6 +691,98 @@
           answer: 0
         }
       ]
+    },
+    {
+      id: 'r33',
+      level: 3,
+      title: 'Rain at the Library',
+      text: 'Maple and Fern walked to the library just as the rain slowed. The path was dark and damp, so they wiped their feet on the mat and stood a moment by the door. Inside, the room smelled like paper and warm wood. A lamp glowed on the low table, and the window seat held a folded blanket.\n\nThe librarian had set out three books. One showed a boat in a storm. One showed a garden after rain. The third showed a small fox carrying a basket. Maple chose the garden book because the cover looked like the path they had just walked. Fern chose the fox book and traced the basket with one careful paw.\n\nThey read without rushing. When Maple did not know a word, she looked at the picture and then tried the word again. Fern waited and did not laugh. At the end of the chapter, the garden in the story had a bright puddle, just like the one by the real library steps. The two friends marked the page with a leaf and agreed to read the next chapter tomorrow.',
+      questions: [
+        {
+          q: 'Why did Maple and Fern wipe their feet?',
+          choices: ['The path was damp', 'The floor was made of snow', 'They were painting', 'The bell told them to'],
+          answer: 0
+        },
+        {
+          q: 'Which book did Maple choose?',
+          choices: ['The garden book', 'The boat book', 'A blank notebook', 'The bakery menu'],
+          answer: 0
+        },
+        {
+          q: 'What did they use to mark the page?',
+          choices: ['A leaf', 'A shoe', 'A bell', 'A bucket of paint'],
+          answer: 0
+        }
+      ]
+    },
+    {
+      id: 'r34',
+      level: 3,
+      title: 'Morning at the Zoo Gate',
+      text: 'The zoo gate opened just after breakfast. Maple carried a small notebook, and Fern carried nothing but curiosity. First they stopped at the pond habitat, where two ducks made a thin silver line across the water. A keeper poured water into a low bowl and then stepped back so the animals could drink in peace.\n\nNext they visited the grassy log. A rabbit sat beside a pile of leaves and did not look at the bowl of fish in the next habitat. Maple wrote, “The rabbit chose leaves.” Fern nodded, because the rabbit’s nose stayed near the greens. They did not tap the glass. They only watched.\n\nOn the way out, a plant by the path looked droopy. The keeper let Maple tip a little water into the soil. After a short wait, the leaves looked a bit higher. Maple drew the plant twice, once thirsty and once after the drink, and Fern said the second drawing looked happier.',
+      questions: [
+        {
+          q: 'What did the rabbit stay near?',
+          choices: ['A pile of leaves', 'The bowl of fish', 'The bakery oven', 'A school bell'],
+          answer: 0
+        },
+        {
+          q: 'What did Maple and Fern not do at the glass?',
+          choices: ['They did not tap it', 'They broke it', 'They painted it', 'They hid it'],
+          answer: 0
+        },
+        {
+          q: 'What changed after the plant got water?',
+          choices: ['The leaves looked a bit higher', 'The plant walked away', 'The ducks left town', 'The notebook closed itself'],
+          answer: 0
+        }
+      ]
+    },
+    {
+      id: 'r35',
+      level: 3,
+      title: 'The Helper’s Desk',
+      text: 'A paper on the helper’s desk said a small pet was waiting. The note listed three calm clues: a red collar, a blue bandana, and long soft ears. Maple read the clues out loud once, then again more slowly. Fern pointed at the words with a paw and did not rush.\n\nThey matched the red collar to Sunny the puppy, because the drawing next to that name showed a red band around the neck. The blue bandana matched Pip the kitten. The long soft ears matched Bramble the bunny. Each match went on a separate card so the clues did not get mixed.\n\nWhen the cards were finished, a helper smiled and said the pets were safe and heading home. Nobody was in trouble. Maple and Fern washed their paws, left the cards in a neat stack, and walked back past the star badge in the window.',
+      questions: [
+        {
+          q: 'Which clue matched Sunny the puppy?',
+          choices: ['A red collar', 'A blue bandana', 'Long soft ears', 'A loaf of bread'],
+          answer: 0
+        },
+        {
+          q: 'How did they keep the clues from getting mixed?',
+          choices: ['Each match went on a separate card', 'They hid the notes', 'They rang a loud bell', 'They threw the paper away'],
+          answer: 0
+        },
+        {
+          q: 'What did the helper say about the pets?',
+          choices: ['They were safe and heading home', 'They were lost forever', 'They had to stay at school', 'They could not have water'],
+          answer: 0
+        }
+      ]
+    },
+    {
+      id: 'r36',
+      level: 3,
+      title: 'A Quiet Clinic Morning',
+      text: 'The clinic room was bright and quiet. A folded blanket lay on the low table, and a plant stood by the window. Maple had come to learn how animal bodies work, not for a checkup. A poster showed a simple heart and a pair of ears. The words under the heart said it beats to move blood.\n\nFern listened while Maple read. Ears help an animal hear. A nose helps an animal smell food and friends. Lungs help the body take in air. None of the pictures were scary, and nobody had to be brave about a needle because there was no needle in the lesson.\n\nAfter the reading, they filled a clean water bowl and set it on the floor. The poster said clean water is a kind habit. Maple traced the heart with a finger, then traced the ears, and told Fern each part’s job in her own words. They left the blanket smooth and the room as calm as they found it.',
+      questions: [
+        {
+          q: 'Why did Maple come to the clinic room?',
+          choices: ['To learn how animal bodies work', 'To bake bread', 'To buy a ticket', 'To paint the door'],
+          answer: 0
+        },
+        {
+          q: 'What job did the poster give the heart?',
+          choices: ['It beats to move blood', 'It rings a bell', 'It stores books', 'It lights the lamp'],
+          answer: 0
+        },
+        {
+          q: 'What did they do with the water bowl?',
+          choices: ['Filled it and set it on the floor', 'Hid it on the roof', 'Traded it for a bell', 'Left it empty on purpose'],
+          answer: 0
+        }
+      ]
     }
   ];
 
@@ -726,10 +818,28 @@
       text: 'Rain tapped the roof while {name} stayed on the rug. A blanket made a soft cave. When the rain slowed, {name} looked out and saw one bright puddle.'
     },
     {
+      id: 'b07',
+      level: 3,
+      title: '{name} Reads a Long Chapter',
+      text: '{name} opened a chapter about a rainy path, a library lamp, and a fox who waited. The first page showed puddles by the steps. The next page showed three books on a low table.\n\n{name} read one paragraph, looked at the picture, and then read the next paragraph. When a word felt new, {name} said it slowly and used the picture as a hint. Nobody rushed.\n\nAt the end, the friends in the story marked their place with a leaf. {name} did the same with a paper leaf and closed the book gently. The lamp stayed on a little longer, and the room still felt calm.'
+    },
+    {
+      id: 'b08',
+      level: 3,
+      title: 'Market Day with {name}',
+      text: '{name} walked between the market baskets and named what was easy to see: red apples, orange carrots, and a loaf wrapped in paper. A seller smiled and pointed to the fruit basket, then the garden basket.\n\n{name} matched each food to the basket it belonged in. The apple stayed with the fruit. The carrot stayed with the garden food. The loaf stayed near the bread. {name} checked once more before moving on.\n\nOn the way home, {name} told the list out loud. Saying the names helped the picture stay clear. The baskets were still tidy when they looked back.'
+    },
+    {
       id: 'b05',
       level: 3,
       title: '{name} and the Library Key',
       text: 'The librarian let {name} hold the ribbon that marked the next chapter. {name} carried it carefully to the window seat and looked at the picture of a small boat. Outside, the path was still wet, so the story was a good place to stay.'
+    },
+    {
+      id: 'b06',
+      level: 1,
+      title: 'A Nap for {name}',
+      text: '{name} found a soft rug. {name} lay down. The room was quiet.'
     }
   ];
 
