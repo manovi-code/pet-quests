@@ -11,9 +11,11 @@
   'use strict';
 
   var FRIENDLY_TABLES = [2, 5, 10, 1];
-  var MID_TABLES = [3, 4, 6, 11];
+  var MID_TABLES = [3, 4, 11, 6];
   var HARD_TABLES = [7, 8, 9, 12];
   var ALL_TABLES = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
+  // Easier tables first, then mid, then harder. Used for the weekly plan.
+  var TABLE_PROGRESSION = [1, 2, 5, 10, 3, 4, 11, 6, 7, 8, 9, 12];
 
   function checkAnswer(expected, given) {
     var e = parseInt(String(expected).trim(), 10);
@@ -63,8 +65,39 @@
     return state;
   }
 
+  function uniqueTables(list) {
+    var out = [];
+    var seen = {};
+    var i, n;
+    list = list || [];
+    for (i = 0; i < list.length; i++) {
+      n = parseInt(list[i], 10);
+      if (n >= 1 && n <= 12 && !seen[n]) {
+        seen[n] = true;
+        out.push(n);
+      }
+    }
+    return out;
+  }
+
+  /** Selected tables in easier → harder order. */
+  function orderByEase(tables) {
+    var wanted = {};
+    var unique = uniqueTables(tables);
+    var i;
+    for (i = 0; i < unique.length; i++) wanted[unique[i]] = true;
+    var ordered = [];
+    for (i = 0; i < TABLE_PROGRESSION.length; i++) {
+      if (wanted[TABLE_PROGRESSION[i]]) ordered.push(TABLE_PROGRESSION[i]);
+    }
+    return ordered;
+  }
+
   /**
-   * Weight tables toward weaker ones. Brand-new players get friendly tables.
+   * Weight tables toward weaker ones.
+   * With no pool, a brand-new player still sees friendly tables first.
+   * With options.pool, weights stay inside that day's tables only.
+   * Review tables are down-weighted so they stay a small part of the mix.
    * Returns array of { table, weight }.
    */
   function weightedTables(tableStats, options) {
@@ -76,8 +109,11 @@
       if (s) totalAttempts += s.attempts || 0;
     }
 
+    var explicitPool = Array.isArray(options.pool) && options.pool.length > 0;
     var pool;
-    if (totalAttempts < 8) {
+    if (explicitPool) {
+      pool = uniqueTables(options.pool);
+    } else if (totalAttempts < 8) {
       pool = FRIENDLY_TABLES.slice();
     } else if (totalAttempts < 30) {
       pool = FRIENDLY_TABLES.concat(MID_TABLES);
@@ -85,7 +121,11 @@
       pool = ALL_TABLES.slice();
     }
 
-    if (options.forceAll) pool = ALL_TABLES.slice();
+    if (options.forceAll && !explicitPool) pool = ALL_TABLES.slice();
+    if (!pool.length) pool = FRIENDLY_TABLES.slice();
+
+    var review = uniqueTables(options.review);
+    var focus = uniqueTables(options.focus);
 
     return pool.map(function (table) {
       var acc = tableAccuracy(tableStats, table);
@@ -102,8 +142,11 @@
         weight = 0.6;
       }
       // boost hard tables slightly once unlocked so they appear
-      if (HARD_TABLES.indexOf(table) !== -1 && totalAttempts >= 30) {
+      if (!explicitPool && HARD_TABLES.indexOf(table) !== -1 && totalAttempts >= 30) {
         weight *= 1.2;
+      }
+      if (review.indexOf(table) !== -1 && focus.indexOf(table) === -1) {
+        weight *= 0.4;
       }
       return { table: table, weight: weight };
     });
@@ -123,26 +166,105 @@
     return items[items.length - 1];
   }
 
-  function pickOtherFactor(rng) {
-    rng = rng || Math.random;
-    return 1 + Math.floor(rng() * 12);
+  /**
+   * How many tries she has on this table. Missing stats count as zero.
+   */
+  function tableAttempts(tableStats, table) {
+    var s = tableStats && tableStats[String(table)];
+    return s && s.attempts ? s.attempts : 0;
   }
 
-  function makeMulTask(tableStats, rng, id) {
-    rng = rng || Math.random;
-    var weights = weightedTables(tableStats);
-    var picked = pickWeighted(weights, rng);
-    var a = picked.table;
-    var b = pickOtherFactor(rng);
-    // Prefer weaker facts when we have data
-    var tries = 0;
-    while (tries < 4) {
-      var fk = factKey(a, b, '×');
-      var fs = tableStats && null; // fact preference via parent state later
-      void fs;
-      void fk;
-      break;
+  /** Enough correct practice that larger factors are a fair next step. */
+  function tableIsStrong(tableStats, table) {
+    var s = tableStats && tableStats[String(table)];
+    if (!s || !s.attempts) return false;
+    return s.attempts >= 6 && (s.correct / s.attempts) >= 0.8;
+  }
+
+  function clampGrade(grade) {
+    var n = parseInt(grade, 10);
+    if (!(n >= 1 && n <= 5)) return 2;
+    return n;
+  }
+
+  /**
+   * What a grade may practice.
+   * Grade 1 stays on friendly tables and tiny factors.
+   * Each step adds tables and a little more range.
+   * Grade 4 is most of 1–12. Grade 5 is the full set.
+   */
+  function gradeProfile(grade) {
+    var profiles = {
+      1: { grade: 1, tables: [1, 2, 5, 10], early: 3, full: 5 },
+      2: { grade: 2, tables: [1, 2, 5, 10, 3, 4], early: 5, full: 7 },
+      3: { grade: 3, tables: [1, 2, 5, 10, 3, 4, 6, 11], early: 6, full: 9 },
+      4: { grade: 4, tables: [1, 2, 3, 4, 5, 6, 7, 8, 10, 11], early: 8, full: 10 },
+      5: { grade: 5, tables: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12], early: 6, full: 12 }
+    };
+    return profiles[clampGrade(grade)];
+  }
+
+  function tablesForGrade(grade) {
+    return gradeProfile(grade).tables.slice();
+  }
+
+  /**
+   * Other-factor range inside the grade's cap.
+   * Smaller when the table is new, the week just started, or practice is thin.
+   * Up to the grade's full cap later, or sooner once accuracy is strong.
+   */
+  function factorBounds(table, spec) {
+    spec = spec || {};
+    var caps = gradeProfile(spec.grade);
+    var stats = spec.tableStats;
+    var introduced = spec.introduced || [];
+    var dayIndex = spec.dayIndex == null ? 0 : spec.dayIndex;
+    var ready = tableIsStrong(stats, table) ||
+      (dayIndex > 1 &&
+        introduced.indexOf(table) === -1 &&
+        tableAttempts(stats, table) >= 4);
+    return { min: 1, max: ready ? caps.full : caps.early };
+  }
+
+  /** Upper band used once a table is ready to stretch inside this grade. */
+  function stretchBand(table, spec) {
+    var caps = gradeProfile(spec && spec.grade);
+    var bounds = factorBounds(table, spec);
+    if (bounds.max <= caps.early) return null;
+    var min = caps.early + 1;
+    if (min > bounds.max) return null;
+    return { min: min, max: bounds.max };
+  }
+
+  function resolveFactorBounds(table, options) {
+    var bounds = factorBounds(table, options || {});
+    if (options && options.factorMin != null) bounds.min = options.factorMin;
+    if (options && options.factorMax != null) bounds.max = options.factorMax;
+    if (bounds.min < 1) bounds.min = 1;
+    if (bounds.max > 12) bounds.max = 12;
+    if (bounds.min > bounds.max) bounds.min = bounds.max;
+    return bounds;
+  }
+
+  function pickFactor(table, bounds, factStats, rng) {
+    var items = [];
+    var b;
+    for (b = bounds.min; b <= bounds.max; b++) {
+      var fk = factKey(table, b, '×');
+      var fs = factStats && factStats[fk];
+      var w = 1;
+      if (!fs || !fs.attempts) w = 1.6;
+      else if (fs.correct / fs.attempts < 0.5) w = 4;
+      else if (fs.correct / fs.attempts < 0.8) w = 2.2;
+      else w = 0.7;
+      // In a full 1–12 range, keep smaller factors a little more common.
+      if (bounds.max > 6 && b <= 6) w *= 1.25;
+      items.push({ b: b, weight: w });
     }
+    return pickWeighted(items, rng).b;
+  }
+
+  function mulTaskFrom(a, b, id) {
     return {
       id: id || 'mul-' + a + 'x' + b,
       type: 'mul',
@@ -155,53 +277,246 @@
     };
   }
 
-  function makeMulTaskPreferWeakFacts(tableStats, factStats, rng, id) {
+  function makeMulTaskPreferWeakFacts(tableStats, factStats, rng, id, options) {
     rng = rng || Math.random;
-    var weights = weightedTables(tableStats);
-    var picked = pickWeighted(weights, rng);
-    var a = picked.table;
-    var candidates = [];
-    var b;
-    for (b = 1; b <= 12; b++) {
-      var fk = factKey(a, b, '×');
-      var fs = factStats && factStats[fk];
-      var w = 1;
-      if (!fs || !fs.attempts) w = 1.8;
-      else if (fs.correct / fs.attempts < 0.5) w = 4;
-      else if (fs.correct / fs.attempts < 0.8) w = 2;
-      else w = 0.7;
-      candidates.push({ b: b, weight: w });
-    }
-    var chosen = pickWeighted(candidates, rng);
-    b = chosen.b;
-    return {
-      id: id || 'mul-' + a + 'x' + b + '-' + Math.floor(rng() * 1e6),
-      type: 'mul',
-      mission: 'multiply',
-      a: a,
-      b: b,
-      prompt: a + ' × ' + b,
-      answer: a * b,
-      missCount: 0
-    };
+    options = options || {};
+    var weights = weightedTables(tableStats, options);
+    var a = options.table != null ? parseInt(options.table, 10) : pickWeighted(weights, rng).table;
+    var bounds = resolveFactorBounds(a, {
+      dayIndex: options.dayIndex,
+      tableStats: options.tableStats || tableStats,
+      introduced: options.introduced,
+      grade: options.grade,
+      factorMin: options.factorMin,
+      factorMax: options.factorMax
+    });
+    var b = pickFactor(a, bounds, factStats, rng);
+    return mulTaskFrom(a, b, id || ('mul-' + a + 'x' + b + '-' + Math.floor(rng() * 1e6)));
   }
 
-  function makeAddSubTask(rng, id) {
+  function makeMulTask(tableStats, rng, id, options) {
+    return makeMulTaskPreferWeakFacts(tableStats, null, rng, id, options);
+  }
+
+  /**
+   * One day's multiplication block.
+   * Every focus table appears at least once. Review is a small extra.
+   * A table that is ready for a bigger step gets at least one factor in the grade's upper band.
+   */
+  function buildMulTasks(tableStats, factStats, rng, count, spec) {
     rng = rng || Math.random;
+    spec = spec || {};
+    count = count || 0;
+    var focus = uniqueTables(spec.focus && spec.focus.length ? spec.focus : spec.pool);
+    var review = uniqueTables(spec.review);
+    var pool = uniqueTables((spec.pool && spec.pool.length) ? spec.pool : focus.concat(review));
+    if (!pool.length) pool = focus.length ? focus.slice() : [2];
+    if (!focus.length) focus = pool.slice(0, 1);
+
+    var shared = {
+      pool: pool,
+      focus: focus,
+      review: review,
+      introduced: uniqueTables(spec.introduced),
+      dayIndex: spec.dayIndex == null ? 0 : spec.dayIndex,
+      grade: spec.grade,
+      tableStats: spec.tableStats || tableStats
+    };
+
+    var tasks = [];
+
+    function pushTable(table, band) {
+      var opts = {
+        table: table,
+        pool: shared.pool,
+        focus: shared.focus,
+        review: shared.review,
+        introduced: shared.introduced,
+        dayIndex: shared.dayIndex,
+        grade: shared.grade,
+        tableStats: shared.tableStats
+      };
+      if (band) {
+        opts.factorMin = band.min;
+        opts.factorMax = band.max;
+      }
+      tasks.push(makeMulTaskPreferWeakFacts(tableStats, factStats, rng, 'mul-seed', opts));
+    }
+
+    var i;
+    var stretchTables = [];
+    for (i = 0; i < focus.length && tasks.length < count; i++) {
+      pushTable(focus[i], null);
+      var focusBand = stretchBand(focus[i], shared);
+      if (focusBand) stretchTables.push({ table: focus[i], band: focusBand });
+    }
+    for (i = 0; i < review.length && tasks.length < count; i++) {
+      var reviewBand = stretchBand(review[i], shared);
+      pushTable(review[i], reviewBand);
+      if (reviewBand) stretchTables.push({ table: review[i], band: reviewBand });
+    }
+    while (tasks.length < count) {
+      tasks.push(makeMulTaskPreferWeakFacts(tableStats, factStats, rng, 'mul-fill', shared));
+    }
+
+    function hasHighFactor(table, minHigh) {
+      var n;
+      for (n = 0; n < tasks.length; n++) {
+        if (tasks[n].a === table && tasks[n].b >= minHigh) return true;
+      }
+      return false;
+    }
+
+    for (i = 0; i < stretchTables.length; i++) {
+      var entry = stretchTables[i];
+      if (hasHighFactor(entry.table, entry.band.min)) continue;
+      var replaceAt = -1;
+      var n;
+      for (n = tasks.length - 1; n >= 0; n--) {
+        if (tasks[n].a === entry.table) {
+          replaceAt = n;
+          break;
+        }
+      }
+      if (replaceAt === -1) replaceAt = tasks.length - 1;
+      var forced = {
+        table: entry.table,
+        pool: shared.pool,
+        focus: shared.focus,
+        review: shared.review,
+        introduced: shared.introduced,
+        dayIndex: shared.dayIndex,
+        grade: shared.grade,
+        tableStats: shared.tableStats,
+        factorMin: entry.band.min,
+        factorMax: entry.band.max
+      };
+      tasks[replaceAt] = makeMulTaskPreferWeakFacts(tableStats, factStats, rng, 'mul-stretch', forced);
+    }
+
+    var prefix = spec.idPrefix || 'mul';
+    for (i = 0; i < tasks.length; i++) tasks[i].id = prefix + '-' + i;
+    return tasks;
+  }
+
+  /**
+   * Seven local days, Monday first.
+   * Easier selected tables are introduced earlier. Every selected table is
+   * introduced on some day. Later days add a little review.
+   */
+  function weeklyTablePlan(selectedTables) {
+    var ordered = orderByEase(selectedTables);
+    var days = [];
+    var d;
+    for (d = 0; d < 7; d++) {
+      days.push({ focus: [], review: [], introduced: [] });
+    }
+    if (!ordered.length) return days;
+
+    var n = ordered.length;
+    var base = Math.floor(n / 7);
+    var extra = n % 7;
+    var cursor = 0;
+    var introducedAll = [];
+
+    for (d = 0; d < 7; d++) {
+      var count = base + (d < extra ? 1 : 0);
+      var introduced = [];
+      var k;
+      for (k = 0; k < count; k++) {
+        introduced.push(ordered[cursor]);
+        introducedAll.push(ordered[cursor]);
+        cursor++;
+      }
+      var focus = introduced.slice();
+      if (!focus.length) {
+        var recentCount = Math.min(2, introducedAll.length);
+        focus = introducedAll.slice(introducedAll.length - recentCount);
+      }
+      var review = [];
+      if (d >= 2) {
+        var earlier = [];
+        for (k = 0; k < introducedAll.length; k++) {
+          if (focus.indexOf(introducedAll[k]) === -1 && earlier.indexOf(introducedAll[k]) === -1) {
+            earlier.push(introducedAll[k]);
+          }
+        }
+        if (earlier.length) {
+          review.push(earlier[(d - 2) % earlier.length]);
+          if (d >= 5 && earlier.length > 2) {
+            var idx2 = (d + Math.floor(earlier.length / 2)) % earlier.length;
+            if (review.indexOf(earlier[idx2]) === -1) review.push(earlier[idx2]);
+          }
+        }
+      }
+      days[d] = { focus: focus, review: review, introduced: introduced };
+    }
+    return days;
+  }
+
+  /** Single digit 0–9, mostly 1–9. */
+  function pickDigit(rng) {
+    if (rng() < 0.1) return 0;
+    return 1 + Math.floor(rng() * 9);
+  }
+
+  function warmupCaps(grade) {
+    grade = clampGrade(grade);
+    if (grade <= 1) return { single: true, limit: 9, easy: 9 };
+    if (grade === 2) return { single: false, limit: 20, easy: 9 };
+    if (grade === 3) return { single: false, limit: 50, easy: 20 };
+    if (grade === 4) return { single: false, limit: 100, easy: 40 };
+    return { single: false, limit: 100, easy: 50 };
+  }
+
+  function pickSumWithin(rng, limit, easy) {
+    var cap = rng() < 0.62 ? Math.min(easy, limit) : limit;
+    var a = Math.floor(rng() * (cap + 1));
+    var room = limit - a;
+    if (room < 0) room = 0;
+    var bCap = Math.min(cap, room);
+    var b = Math.floor(rng() * (bCap + 1));
+    return { a: a, b: b, answer: a + b };
+  }
+
+  function pickDiffWithin(rng, limit, easy) {
+    var cap = rng() < 0.62 ? Math.min(easy, limit) : limit;
+    var a = Math.floor(rng() * (cap + 1));
+    var b = Math.floor(rng() * (a + 1));
+    return { a: a, b: b, answer: a - b };
+  }
+
+  function makeAddSubTask(rng, id, options) {
+    rng = rng || Math.random;
+    options = options || {};
+    var caps = warmupCaps(options.grade == null ? 2 : options.grade);
     var isAdd = rng() < 0.55;
     var a, b, answer, prompt, type;
-    if (isAdd) {
-      a = 10 + Math.floor(rng() * 40); // 10-49
-      b = 5 + Math.floor(rng() * 35);  // 5-39
-      answer = a + b;
-      prompt = a + ' + ' + b;
-      type = 'add';
+    if (caps.single) {
+      if (isAdd) {
+        a = pickDigit(rng);
+        b = pickDigit(rng);
+        answer = a + b;
+        prompt = a + ' + ' + b;
+        type = 'add';
+      } else {
+        a = pickDigit(rng);
+        if (a === 0) b = 0;
+        else if (rng() < 0.12) b = 0;
+        else b = 1 + Math.floor(rng() * a);
+        answer = a - b;
+        prompt = a + ' − ' + b;
+        type = 'sub';
+      }
     } else {
-      a = 20 + Math.floor(rng() * 50); // 20-69
-      b = 5 + Math.floor(rng() * Math.min(30, a - 1));
-      answer = a - b;
-      prompt = a + ' − ' + b;
-      type = 'sub';
+      var picked = isAdd
+        ? pickSumWithin(rng, caps.limit, caps.easy)
+        : pickDiffWithin(rng, caps.limit, caps.easy);
+      a = picked.a;
+      b = picked.b;
+      answer = picked.answer;
+      type = isAdd ? 'add' : 'sub';
+      prompt = isAdd ? (a + ' + ' + b) : (a + ' − ' + b);
     }
     return {
       id: id || type + '-' + a + '-' + b + '-' + Math.floor(rng() * 1e6),
@@ -225,20 +540,38 @@
       return walkthroughMul(task.a, task.b);
     }
     if (task.type === 'add') {
-      if (missCount === 1) {
-        return 'Almost! Try adding the ones place first, then the tens.';
-      }
-      return 'Walkthrough: ' + task.a + ' + ' + task.b + ' = ' + task.answer +
-        '. Count up from ' + task.a + ' by ' + task.b + '. Now type ' + task.answer + '.';
+      return addHint(task, missCount);
     }
     if (task.type === 'sub') {
-      if (missCount === 1) {
-        return 'Take it slow — start at ' + task.a + ' and subtract ' + task.b + '.';
-      }
-      return 'Walkthrough: ' + task.a + ' − ' + task.b + ' = ' + task.answer +
-        '. Now type ' + task.answer + ' to practice.';
+      return subHint(task, missCount);
     }
     return 'Give it another try — you can do this!';
+  }
+
+  function addHint(task, missCount) {
+    var big = Math.max(task.a, task.b);
+    var small = Math.min(task.a, task.b);
+    var twoDigit = task.a >= 10 || task.b >= 10;
+    if (missCount === 1) {
+      if (small === 0) return 'Adding zero keeps the number the same. What is ' + big + '?';
+      if (twoDigit) return 'Almost! Add the ones first, then the tens.';
+      return 'Almost! Start at ' + big + ' and count up ' + small + '.';
+    }
+    if (twoDigit) {
+      return 'Walkthrough: ' + task.a + ' + ' + task.b + ' = ' + task.answer +
+        '. Ones first, then tens. Now type ' + task.answer + '.';
+    }
+    return 'Walkthrough: ' + task.a + ' + ' + task.b + ' = ' + task.answer +
+      '. Now type ' + task.answer + '.';
+  }
+
+  function subHint(task, missCount) {
+    if (missCount === 1) {
+      if (task.b === 0) return 'Subtracting zero keeps the number the same. What is ' + task.a + '?';
+      return 'Almost! Start at ' + task.a + ' and count back ' + task.b + '.';
+    }
+    return 'Walkthrough: ' + task.a + ' − ' + task.b + ' = ' + task.answer +
+      '. Now type ' + task.answer + ' to practice.';
   }
 
   function firstMulHint(a, b) {
@@ -346,18 +679,28 @@
   return {
     FRIENDLY_TABLES: FRIENDLY_TABLES,
     ALL_TABLES: ALL_TABLES,
+    TABLE_PROGRESSION: TABLE_PROGRESSION,
+    clampGrade: clampGrade,
+    gradeProfile: gradeProfile,
+    tablesForGrade: tablesForGrade,
+    stretchBand: stretchBand,
     checkAnswer: checkAnswer,
     factKey: factKey,
     tableAccuracy: tableAccuracy,
     recordResult: recordResult,
     weightedTables: weightedTables,
     pickWeighted: pickWeighted,
+    factorBounds: factorBounds,
+    weeklyTablePlan: weeklyTablePlan,
+    orderByEase: orderByEase,
     makeMulTask: makeMulTask,
     makeMulTaskPreferWeakFacts: makeMulTaskPreferWeakFacts,
+    buildMulTasks: buildMulTasks,
     makeAddSubTask: makeAddSubTask,
     getHint: getHint,
     processMathAttempt: processMathAttempt,
     encouragement: encouragement,
-    masteredTables: masteredTables
+    masteredTables: masteredTables,
+    tableIsStrong: tableIsStrong
   };
 });

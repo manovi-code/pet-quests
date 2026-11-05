@@ -15,6 +15,13 @@
   var nicknameDraft = '';
   var settingsOpen = false;
   var readingRevealed = false;
+  var houseId = null;
+  var roleplayNote = '';
+  var roleplayStep = 0;
+  var questFocus = null;
+  var settingsNote = '';
+  var neighborhoodNote = '';
+  var freshUnlock = null;
 
   function $(sel) {
     return document.querySelector(sel);
@@ -40,6 +47,8 @@
 
   function boot() {
     state = store.load();
+    PQQuest.normalizeCourses(state);
+    PQWorld.ensureWorld(state);
     PQStorage.ensureWeek(state);
     if (!state.onboardingDone || !state.petId) {
       go('welcome');
@@ -62,6 +71,7 @@
     else if (screen === 'pick-pet') renderPickPet(app);
     else if (screen === 'nickname') renderNickname(app);
     else if (screen === 'home') renderHome(app);
+    else if (screen === 'house') renderHouse(app);
     else if (screen === 'quest') renderQuest(app);
     else if (screen === 'celebrate') renderCelebrate(app);
     else if (screen === 'practice') renderPractice(app);
@@ -105,6 +115,7 @@
       '<li>Warmup math</li>' +
       '<li>A short pet story</li>' +
       '<li>Times tables practice</li>' +
+      '<li>A little neighborhood to explore</li>' +
       '</ul>' +
       '<button type="button" class="btn primary lg" data-act="start-onboarding">Meet your pet</button>' +
       '</main>';
@@ -181,25 +192,89 @@
     }
   }
 
+  function todayPlanHtml() {
+    var dk = PQStorage.localDateKey();
+    var plan = null;
+    if (state.daily && state.daily.dateKey === dk) {
+      plan = state.daily.plan;
+      if (!plan && state.daily.tasks && state.daily.tasks.length) {
+        plan = PQQuest.planFromTasks(state.daily);
+      }
+    }
+    if (!plan) return '';
+    var described = PQQuest.describeToday(plan);
+    if (!described.partsLine && !described.tablesLine) return '';
+    var html = '<div class="today-plan-block">';
+    if (described.partsLine) html += '<p>' + esc(described.partsLine) + '</p>';
+    if (described.tablesLine) html += '<p class="today-tables">' + esc(described.tablesLine) + '</p>';
+    html += '</div>';
+    return html;
+  }
+
+  function readyCardHtml() {
+    var info = PQQuest.gradeReadiness(state);
+    if (!info.ready) return '';
+    return (
+      '<div class="ready-card">' +
+      '<p>These problems are feeling friendly. Ready to try the next grade when you are.</p>' +
+      '<button type="button" class="btn secondary" data-act="try-next-grade">Try Grade ' +
+      info.next +
+      '</button>' +
+      '</div>'
+    );
+  }
+
+  function missionStillOpen(mission) {
+    if (!mission || !state.courses || !state.courses.parts[mission]) return false;
+    if (todayDone()) return false;
+    syncCleared(state.daily);
+    return nextOpenIndex(mission) !== -1;
+  }
+
   function renderHome(app) {
     PQQuest.ensureTodayQuest(state);
+    PQWorld.ensureWorld(state);
     save();
     var name = PQPets.displayName(state);
     var stage = state.growthStage || 0;
     var week = PQStorage.weeklyProgress(state);
-    var mastered = PQMath.masteredTables(state.tableStats || {});
     var done = todayDone();
+    var note = neighborhoodNote
+      ? '<p class="kind-note">' + esc(neighborhoodNote) + '</p>'
+      : '';
+    var houses = PQWorld.HOUSES.map(function (house) {
+      var title = PQWorld.houseTitle(house, name);
+      var flag = missionStillOpen(house.mission)
+        ? '<em class="house-flag">Quest here</em>'
+        : '';
+      return (
+        '<button type="button" class="house-card" data-act="open-house" data-house="' +
+        house.id +
+        '">' +
+        '<span class="house-art">' +
+        PQWorld.renderHouseFront(house.id) +
+        '</span>' +
+        '<strong>' +
+        esc(title) +
+        '</strong>' +
+        '<span>' +
+        esc(house.blurb) +
+        '</span>' +
+        flag +
+        '</button>'
+      );
+    }).join('');
     var cta = done
-      ? '<p class="kind-note">Today’s quest is done. Nice work — come back tomorrow, or try a little extra practice.</p>' +
-        '<button type="button" class="btn primary lg" data-act="extra-practice">Extra practice</button>'
+      ? '<p class="kind-note">Today’s quest is done. The neighborhood is still open, or you can try extra tables.</p>' +
+        '<button type="button" class="btn primary lg" data-act="extra-practice">Extra times tables</button>'
       : '<button type="button" class="btn primary lg" data-act="start-quest">Start today’s quest</button>';
 
     app.innerHTML =
       headerBar('Pet Quests') +
       '<main class="panel home">' +
-      '<div class="habitat-wrap">' +
-      PQPets.renderHabitatSvg(stage) +
-      '<div class="pet-on-habitat">' +
+      '<div class="garden-banner">' +
+      PQWorld.renderSkylineSvg() +
+      '<div class="pet-on-banner">' +
       PQPets.renderPetSvg(state.petId, stage, { label: name }) +
       '</div>' +
       '</div>' +
@@ -209,6 +284,13 @@
       '<p class="stage-label">' +
       esc(PQPets.STAGE_LABELS[stage] || '') +
       '</p>' +
+      todayPlanHtml() +
+      note +
+      readyCardHtml() +
+      cta +
+      '<div class="house-grid" aria-label="Neighborhood">' +
+      houses +
+      '</div>' +
       '<div class="week-card" aria-label="Weekly goal">' +
       '<div class="week-top"><span>This week</span><strong>' +
       week.completed +
@@ -223,18 +305,70 @@
       Math.min(100, (week.completed / week.goal) * 100) +
       '%"></i></div>' +
       '<p class="week-hint">Goal: finish 5 daily quests this week. Missing a day is okay.</p>' +
-      (mastered.length
-        ? '<p class="week-hint">Times tables growing strong: ' +
-          mastered.map(function (t) {
-            return t + 's';
-          }).join(', ') +
-          '</p>'
-        : '') +
       '</div>' +
-      cta +
       '<div class="home-actions">' +
       '<button type="button" class="btn secondary" data-act="open-settings">Settings</button>' +
       '</div>' +
+      '</main>';
+  }
+
+  function renderHouse(app) {
+    PQQuest.ensureTodayQuest(state);
+    PQWorld.ensureWorld(state);
+    var house = PQWorld.getHouse(houseId);
+    var name = PQPets.displayName(state);
+    var title = PQWorld.houseTitle(house, name);
+    var actions = PQWorld.actionsFor(house, state);
+    var buttons = actions
+      .map(function (action) {
+        return (
+          '<button type="button" class="btn secondary role-btn" data-act="role-act" data-action="' +
+          action.id +
+          '">' +
+          esc(action.label) +
+          '</button>'
+        );
+      })
+      .join('');
+    var questBtn = '';
+    if (house.mission && state.courses.parts[house.mission] && !todayDone() && missionStillOpen(house.mission)) {
+      questBtn =
+        '<button type="button" class="btn primary lg" data-act="start-mission" data-mission="' +
+        house.mission +
+        '">' +
+        esc(house.questLabel) +
+        '</button>';
+    } else if (house.mission && !state.courses.parts[house.mission]) {
+      questBtn = '<p class="plain-note">This practice is off today. You can still look around.</p>';
+    } else if (house.mission === 'multiply' && todayDone()) {
+      questBtn =
+        '<button type="button" class="btn secondary" data-act="extra-practice">Extra times tables</button>';
+    }
+    var petBit =
+      house.id === 'pet'
+        ? '<div class="pet-in-room">' +
+          PQPets.renderPetSvg(state.petId, state.growthStage || 0, { label: name }) +
+          '</div>'
+        : '';
+    var feedbackHtml = roleplayNote
+      ? '<div class="feedback good" role="status"><p>' + esc(roleplayNote) + '</p></div>'
+      : '';
+
+    app.innerHTML =
+      headerBar(title, { back: true }) +
+      '<main class="panel house">' +
+      '<div class="room-wrap">' +
+      PQWorld.renderRoomSvg(house.id, state) +
+      petBit +
+      '</div>' +
+      '<p class="lede">' +
+      esc(house.blurb) +
+      '</p>' +
+      questBtn +
+      '<div class="role-actions">' +
+      buttons +
+      '</div>' +
+      feedbackHtml +
       '</main>';
   }
 
@@ -245,15 +379,30 @@
       return;
     }
     var daily = state.daily;
-    var idx = daily.taskIndex || 0;
-    var total = daily.tasks.length;
-    if (idx >= total) {
+    syncCleared(daily);
+    if (allTasksCleared()) {
       finishQuest();
       return;
     }
+    var idx = daily.taskIndex || 0;
     var task = daily.tasks[idx];
+    if (!task || task.cleared) {
+      var nextIdx = nextOpenIndex(questFocus);
+      if (nextIdx === -1) nextIdx = nextOpenIndex(null);
+      if (nextIdx === -1) {
+        finishQuest();
+        return;
+      }
+      daily.taskIndex = nextIdx;
+      idx = nextIdx;
+      task = daily.tasks[idx];
+    }
+    var total = daily.tasks.length;
+    var doneCount = 0;
+    var ti;
+    for (ti = 0; ti < total; ti++) if (daily.tasks[ti].cleared) doneCount += 1;
     var mission = PQQuest.currentMissionLabel(task);
-    var progressPct = Math.round((idx / total) * 100);
+    var progressPct = Math.round((doneCount / total) * 100);
 
     var body = '';
     if (task.type === 'reading-pass') body = renderReadingPass(task);
@@ -265,14 +414,14 @@
       '<main class="panel quest">' +
       '<div class="quest-progress">' +
       '<div class="quest-progress-top"><span>Quest progress</span><span>' +
-      (idx + 1) +
+      (doneCount + 1) +
       ' / ' +
       total +
       '</span></div>' +
       '<div class="week-bar thin" role="progressbar" aria-valuemin="0" aria-valuemax="' +
       total +
       '" aria-valuenow="' +
-      idx +
+      doneCount +
       '"><i style="width:' +
       progressPct +
       '%"></i></div>' +
@@ -406,7 +555,10 @@
       '<h2>Wonderful work!</h2>' +
       '<p class="lede">' +
       esc(name) +
-      ' looks proud. Your garden habitat grew a little too.</p>' +
+      ' looks proud. The neighborhood grew a little too.</p>' +
+      (freshUnlock
+        ? '<p class="kind-note">' + esc(freshUnlock.line) + '</p>'
+        : '') +
       '<div class="week-card">' +
       '<div class="week-top"><span>This week</span><strong>' +
       week.completed +
@@ -428,13 +580,8 @@
 
   function renderPractice(app) {
     // Lightweight extra practice: one mul at a time, not counting as daily
-    if (!state._practiceTask) {
-      state._practiceTask = PQMath.makeMulTaskPreferWeakFacts(
-        state.tableStats || {},
-        state.factStats || {},
-        Math.random,
-        'practice'
-      );
+    if (!state._practiceTask || !practiceTaskAllowed(state._practiceTask)) {
+      state._practiceTask = nextPracticeTask();
     }
     var task = state._practiceTask;
     app.innerHTML =
@@ -455,6 +602,68 @@
   }
 
   function renderSettings(app) {
+    PQQuest.normalizeCourses(state);
+    var parts = state.courses.parts;
+    var selected = {};
+    state.courses.tables.forEach(function (n) { selected[n] = true; });
+    var grade = state.courses.grade;
+    var ready = PQQuest.gradeReadiness(state);
+
+    function partButton(id, label) {
+      var on = !!parts[id];
+      return (
+        '<button type="button" class="part-toggle" data-act="toggle-part" data-part="' +
+        id +
+        '" aria-pressed="' +
+        (on ? 'true' : 'false') +
+        '"><span>' +
+        esc(label) +
+        '</span><span class="part-state">' +
+        (on ? 'On' : 'Off') +
+        '</span></button>'
+      );
+    }
+
+    var chips = '';
+    var n;
+    for (n = 1; n <= 12; n++) {
+      var onTable = !!selected[n];
+      chips +=
+        '<button type="button" class="table-chip" data-act="toggle-table" data-table="' +
+        n +
+        '" aria-pressed="' +
+        (onTable ? 'true' : 'false') +
+        '"><span class="chip-name">' +
+        n +
+        's</span><span class="chip-state">' +
+        (onTable ? 'On' : 'Off') +
+        '</span></button>';
+    }
+
+    var grades = '';
+    var g;
+    for (g = 1; g <= 5; g++) {
+      var onGrade = g === grade;
+      grades +=
+        '<button type="button" class="grade-btn" data-act="set-grade" data-grade="' +
+        g +
+        '" aria-pressed="' +
+        (onGrade ? 'true' : 'false') +
+        '">Grade ' +
+        g +
+        '</button>';
+    }
+
+    var note = settingsNote
+      ? '<p class="settings-note" role="status">' + esc(settingsNote) + '</p>'
+      : '';
+    var readyBlock = ready.ready
+      ? '<div class="ready-card"><p>Ready to try the next grade when you are.</p>' +
+        '<button type="button" class="btn primary" data-act="try-next-grade">Try Grade ' +
+        ready.next +
+        '</button></div>'
+      : '';
+
     app.innerHTML =
       headerBar('Settings', { back: true }) +
       '<main class="panel">' +
@@ -464,12 +673,38 @@
       (state.soundOn ? 'On' : 'Off') +
       '</button>' +
       '</label>' +
+      '<section class="course-settings">' +
+      '<h2 class="section-title">Grade</h2>' +
+      '<p class="plain-note">Choose the grade that feels right today. A smaller grade is always okay.</p>' +
+      '<div class="grade-list">' +
+      grades +
+      '</div>' +
+      readyBlock +
+      '<h2 class="section-title">Daily quest parts</h2>' +
+      '<p class="plain-note">Choose what is in the daily quest. At least one stays on.</p>' +
+      partButton('warmup', 'Warmup math') +
+      partButton('reading', 'A short pet story') +
+      partButton('multiply', 'Times tables practice') +
+      '<h2 class="section-title">Times tables</h2>' +
+      '<p class="plain-note">Choose which tables to practice. At least one stays on. A lower grade uses the friendlier ones first.</p>' +
+      '<div class="table-grid">' +
+      chips +
+      '</div>' +
+      '<p class="plain-note">If today’s quest has not been started, these choices update it now. A quest already started stays the same until tomorrow.</p>' +
+      note +
+      '</section>' +
       '<div class="danger-zone">' +
       '<p class="lede">Parent options</p>' +
       '<button type="button" class="btn danger" data-act="reset-confirm">Reset all progress…</button>' +
       '<p class="fine-print">Clears pet, quests, and practice history saved on this device. Cannot be undone.</p>' +
       '</div>' +
       '</main>';
+  }
+
+  function rerenderSettings() {
+    var y = window.scrollY || 0;
+    render();
+    if (screen === 'settings') window.scrollTo(0, y);
   }
 
   /* ---------- Actions ---------- */
@@ -494,13 +729,28 @@
       return;
     }
     if (act === 'back') {
-      if (screen === 'quest' || screen === 'practice' || screen === 'settings' || screen === 'pick-pet' || screen === 'nickname') {
-        if (screen === 'nickname') go('pick-pet');
-        else if (screen === 'pick-pet') go('welcome');
-        else {
-          if (screen === 'practice') state._practiceTask = null;
-          go('home');
-        }
+      if (screen === 'nickname') {
+        go('pick-pet');
+        return;
+      }
+      if (screen === 'pick-pet') {
+        go('welcome');
+        return;
+      }
+      if (screen === 'house') {
+        roleplayNote = '';
+        houseId = null;
+        go('home');
+        return;
+      }
+      if (screen === 'quest' && questFocus && houseId) {
+        go('house');
+        return;
+      }
+      if (screen === 'quest' || screen === 'practice' || screen === 'settings') {
+        if (screen === 'practice') state._practiceTask = null;
+        questFocus = null;
+        go('home');
       }
       return;
     }
@@ -538,10 +788,46 @@
       return;
     }
     if (act === 'start-quest') {
-      PQQuest.ensureTodayQuest(state);
-      state.daily.taskIndex = state.daily.taskIndex || 0;
-      save();
-      go('quest');
+      questFocus = null;
+      startQuestAt(null);
+      return;
+    }
+    if (act === 'open-house') {
+      houseId = t.getAttribute('data-house') || 'pet';
+      roleplayNote = '';
+      go('house');
+      return;
+    }
+    if (act === 'role-act') {
+      var actionId = t.getAttribute('data-action');
+      var played = PQWorld.playAction(houseId, actionId, state, {
+        petName: PQPets.displayName(state),
+        step: roleplayStep
+      });
+      roleplayStep += 1;
+      roleplayNote = played.message;
+      PQAudio.play('correct', state.soundOn);
+      render();
+      return;
+    }
+    if (act === 'start-mission') {
+      startQuestAt(t.getAttribute('data-mission'));
+      return;
+    }
+    if (act === 'toggle-part') {
+      togglePart(t.getAttribute('data-part'));
+      return;
+    }
+    if (act === 'toggle-table') {
+      toggleTable(parseInt(t.getAttribute('data-table'), 10));
+      return;
+    }
+    if (act === 'set-grade') {
+      setGrade(parseInt(t.getAttribute('data-grade'), 10));
+      return;
+    }
+    if (act === 'try-next-grade') {
+      tryNextGrade();
       return;
     }
     if (act === 'extra-practice') {
@@ -552,6 +838,7 @@
       return;
     }
     if (act === 'open-settings') {
+      settingsNote = '';
       go('settings');
       return;
     }
@@ -568,6 +855,12 @@
         state = store.clear();
         selectedPet = null;
         nicknameDraft = '';
+        houseId = null;
+        roleplayNote = '';
+        questFocus = null;
+        freshUnlock = null;
+        neighborhoodNote = '';
+        settingsNote = '';
         go('welcome');
       }
       return;
@@ -613,6 +906,7 @@
     if (!task || task.type !== 'reading-q') return;
     var result = PQReading.processReadingAttempt(task, idx);
     if (result.correct) {
+      noteDailyAnswer(task, true);
       PQAudio.play('correct', state.soundOn);
       feedback = { kind: 'good', message: result.message };
       save();
@@ -622,11 +916,18 @@
       render();
       return;
     }
+    noteDailyAnswer(task, false);
     PQAudio.play('hint', state.soundOn);
     feedback = { kind: 'gentle', message: result.message, hint: result.hint };
     if (result.reveal) readingRevealed = true;
     save();
     render();
+  }
+
+  function noteDailyAnswer(task, ok) {
+    if (screen === 'practice' || !state.daily || !task) return;
+    if (!Array.isArray(state.daily.answers)) state.daily.answers = [];
+    state.daily.answers.push({ id: task.id, ok: !!ok });
   }
 
   function submitMath() {
@@ -640,6 +941,7 @@
     var result = PQMath.processMathAttempt(task, keypadValue);
 
     if (result.correct) {
+      noteDailyAnswer(task, true);
       // missCount is prior misses; 0 means first-try correct
       var wasFirstTry = (task.missCount || 0) === 0;
       if (wasFirstTry) {
@@ -652,12 +954,7 @@
       save();
       if (screen === 'practice') {
         setTimeout(function () {
-          state._practiceTask = PQMath.makeMulTaskPreferWeakFacts(
-            state.tableStats || {},
-            state.factStats || {},
-            Math.random,
-            'practice'
-          );
+          state._practiceTask = nextPracticeTask();
           feedback = null;
           render();
         }, 600);
@@ -672,6 +969,7 @@
     }
 
     // Incorrect
+    noteDailyAnswer(task, false);
     PQAudio.play('hint', state.soundOn);
     feedback = { kind: 'gentle', message: result.message, hint: result.hint };
     keypadValue = '';
@@ -683,16 +981,176 @@
     render();
   }
 
+  function nextPracticeTask() {
+    return PQMath.makeMulTaskPreferWeakFacts(
+      state.tableStats || {},
+      state.factStats || {},
+      Math.random,
+      'practice',
+      PQQuest.mulOptionsForToday(state)
+    );
+  }
+
+  function practiceTaskAllowed(task) {
+    if (!task || task.type !== 'mul') return false;
+    var opts = PQQuest.mulOptionsForToday(state);
+    if (opts.pool.indexOf(task.a) === -1) return false;
+    var bounds = PQMath.factorBounds(task.a, opts);
+    return task.b >= bounds.min && task.b <= bounds.max;
+  }
+
+  function syncCleared(daily) {
+    if (!daily || !daily.tasks) return;
+    var any = false;
+    var i;
+    for (i = 0; i < daily.tasks.length; i++) {
+      if (daily.tasks[i] && daily.tasks[i].cleared) any = true;
+    }
+    var idx = daily.taskIndex || 0;
+    if (!any && idx > 0) {
+      for (i = 0; i < idx && i < daily.tasks.length; i++) daily.tasks[i].cleared = true;
+    }
+  }
+
+  function nextOpenIndex(mission) {
+    var tasks = (state.daily && state.daily.tasks) || [];
+    var i;
+    for (i = 0; i < tasks.length; i++) {
+      if (!tasks[i] || tasks[i].cleared) continue;
+      if (mission && tasks[i].mission !== mission) continue;
+      return i;
+    }
+    return -1;
+  }
+
+  function allTasksCleared() {
+    var tasks = (state.daily && state.daily.tasks) || [];
+    if (!tasks.length) return false;
+    var i;
+    for (i = 0; i < tasks.length; i++) {
+      if (!tasks[i].cleared) return false;
+    }
+    return true;
+  }
+
+  function startQuestAt(mission) {
+    PQQuest.ensureTodayQuest(state);
+    syncCleared(state.daily);
+    questFocus = mission || null;
+    var idx = nextOpenIndex(questFocus);
+    if (idx === -1) idx = nextOpenIndex(null);
+    if (idx === -1) {
+      finishQuest();
+      return;
+    }
+    state.daily.taskIndex = idx;
+    save();
+    go('quest');
+  }
+
+  function togglePart(part) {
+    PQQuest.normalizeCourses(state);
+    var parts = state.courses.parts;
+    if (!parts || !Object.prototype.hasOwnProperty.call(parts, part)) return;
+    if (parts[part]) {
+      var still = (parts.warmup ? 1 : 0) + (parts.reading ? 1 : 0) + (parts.multiply ? 1 : 0);
+      if (still <= 1) {
+        settingsNote = 'Leave at least one part on.';
+        rerenderSettings();
+        return;
+      }
+    }
+    parts[part] = !parts[part];
+    settingsNote = '';
+    PQQuest.ensureTodayQuest(state);
+    save();
+    rerenderSettings();
+  }
+
+  function toggleTable(table) {
+    if (!(table >= 1 && table <= 12)) return;
+    PQQuest.normalizeCourses(state);
+    var tables = state.courses.tables.slice();
+    var idx = tables.indexOf(table);
+    if (idx === -1) {
+      tables.push(table);
+      tables.sort(function (a, b) { return a - b; });
+    } else {
+      if (tables.length <= 1) {
+        settingsNote = 'Leave at least one times table on.';
+        rerenderSettings();
+        return;
+      }
+      tables.splice(idx, 1);
+    }
+    state.courses.tables = tables;
+    settingsNote = '';
+    PQQuest.ensureTodayQuest(state);
+    save();
+    rerenderSettings();
+  }
+
+  function setGrade(grade) {
+    if (!(grade >= 1 && grade <= 5)) return;
+    PQQuest.normalizeCourses(state);
+    if (state.courses.grade === grade) {
+      if (screen === 'settings') rerenderSettings();
+      return;
+    }
+    state.courses.grade = grade;
+    PQQuest.stampGradeProgress(state);
+    settingsNote = '';
+    neighborhoodNote = '';
+    state._practiceTask = null;
+    PQQuest.ensureTodayQuest(state);
+    save();
+    if (screen === 'settings') rerenderSettings();
+    else render();
+  }
+
+  function tryNextGrade() {
+    var ok = PQQuest.applyNextGrade(state);
+    if (!ok) return;
+    neighborhoodNote = 'Grade ' + state.courses.grade + ' is on.';
+    settingsNote = 'Grade ' + state.courses.grade + ' is on.';
+    state._practiceTask = null;
+    PQQuest.ensureTodayQuest(state);
+    save();
+    PQAudio.play('celebrate', state.soundOn);
+    if (screen === 'settings') rerenderSettings();
+    else render();
+  }
+
+  function missionDoneCopy(mission) {
+    if (mission === 'warmup') return 'Kitchen warmup is done. You can look around or visit another house.';
+    if (mission === 'reading') return 'That story is finished. Nice reading.';
+    if (mission === 'multiply') return 'Times tables in the schoolhouse are done for now.';
+    return 'That part is done. The neighborhood is still here.';
+  }
+
   function advanceTask() {
     feedback = null;
     keypadValue = '';
     readingRevealed = false;
     PQAudio.stopSpeak();
-    state.daily.taskIndex = (state.daily.taskIndex || 0) + 1;
-    if (state.daily.taskIndex >= state.daily.tasks.length) {
-      finishQuest();
+    var tasks = state.daily.tasks || [];
+    var current = tasks[state.daily.taskIndex];
+    if (current) current.cleared = true;
+    var idx = nextOpenIndex(questFocus);
+    if (idx === -1) {
+      if (allTasksCleared()) {
+        finishQuest();
+        return;
+      }
+      var finishedMission = questFocus;
+      questFocus = null;
+      save();
+      houseId = PQWorld.houseIdForMission(finishedMission) || houseId;
+      roleplayNote = missionDoneCopy(finishedMission);
+      go('house');
       return;
     }
+    state.daily.taskIndex = idx;
     save();
     render();
   }
@@ -703,6 +1161,8 @@
     var weekAfter = PQStorage.weeklyProgress(state);
     var weeklyJustMet = !weekBefore.met && weekAfter.met;
     PQQuest.applyGrowthForQuest(state, weeklyJustMet);
+    freshUnlock = PQWorld.grantNextUnlock(state);
+    questFocus = null;
     save();
     PQAudio.play('celebrate', state.soundOn);
     go('celebrate');
