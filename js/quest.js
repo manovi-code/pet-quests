@@ -65,6 +65,17 @@
     if (!(grade >= 1 && grade <= 5)) grade = fromRank || 2;
     var rank = PQStorage.rankFromGrade ? PQStorage.rankFromGrade(grade) : 'explorer';
 
+    var focusIn = incoming.lessonFocus;
+    var lessonFocus = {
+      addition: !focusIn || focusIn.addition !== false,
+      subtraction: !focusIn || focusIn.subtraction !== false,
+      multiplication: !focusIn || focusIn.multiplication !== false,
+      reading: !focusIn || focusIn.reading !== false
+    };
+    if (!lessonFocus.addition && !lessonFocus.subtraction && !lessonFocus.multiplication && !lessonFocus.reading) {
+      lessonFocus = { addition: true, subtraction: true, multiplication: true, reading: true };
+    }
+
     var gradeMarked = {};
     var markedIn = incoming.gradeMarked;
     if (markedIn && typeof markedIn === 'object' && !Array.isArray(markedIn)) {
@@ -77,7 +88,14 @@
       }
     }
 
-    state.courses = { parts: parts, tables: tables, grade: grade, rank: rank, gradeMarked: gradeMarked };
+    state.courses = {
+      parts: parts,
+      tables: tables,
+      grade: grade,
+      rank: rank,
+      gradeMarked: gradeMarked,
+      lessonFocus: lessonFocus
+    };
     return state.courses;
   }
 
@@ -117,6 +135,12 @@
     var courseGrade = parseInt(courses.grade, 10);
     if (!(planGrade >= 1 && planGrade <= 5)) return false;
     if (planGrade !== courseGrade) return false;
+    var pf = plan.lessonFocus || { addition: true, subtraction: true, multiplication: true, reading: true };
+    var cf = courses.lessonFocus || { addition: true, subtraction: true, multiplication: true, reading: true };
+    if (!!pf.addition !== !!cf.addition) return false;
+    if (!!pf.subtraction !== !!cf.subtraction) return false;
+    if (!!pf.multiplication !== !!cf.multiplication) return false;
+    if (!!pf.reading !== !!cf.reading) return false;
     return true;
   }
 
@@ -156,7 +180,23 @@
       inPlay: inPlay.slice(),
       focus: copyList(day.focus),
       review: copyList(day.review),
-      introduced: copyList(day.introduced)
+      introduced: copyList(day.introduced),
+      lessonFocus: {
+        addition: !!(courses.lessonFocus && courses.lessonFocus.addition),
+        subtraction: !!(courses.lessonFocus && courses.lessonFocus.subtraction),
+        multiplication: !!(courses.lessonFocus && courses.lessonFocus.multiplication),
+        reading: !!(courses.lessonFocus && courses.lessonFocus.reading)
+      }
+    };
+  }
+
+  function activeSkills(courses, plan) {
+    var focus = (plan && plan.lessonFocus) || courses.lessonFocus || {};
+    return {
+      addition: !!(courses.parts.warmup && focus.addition),
+      subtraction: !!(courses.parts.warmup && focus.subtraction),
+      reading: !!(courses.parts.reading && focus.reading),
+      multiplication: !!(courses.parts.multiply && focus.multiplication)
     };
   }
 
@@ -169,8 +209,51 @@
     return pool;
   }
 
+  function pushMul(state, rng, tasks, missions, plan, courses, count) {
+    if (!count) return;
+    var mulTasks = PQMath.buildMulTasks(
+      state.tableStats || {},
+      state.factStats || {},
+      rng,
+      count,
+      {
+        pool: poolFromPlan(plan),
+        focus: plan.focus,
+        review: plan.review,
+        introduced: plan.introduced,
+        dayIndex: plan.dayIndex,
+        grade: courses.grade,
+        tableStats: state.tableStats || {},
+        petName: state.petName,
+        idPrefix: 'mul'
+      }
+    );
+    var i;
+    for (i = 0; i < mulTasks.length; i++) tasks.push(mulTasks[i]);
+    missions.push({ id: 'multiply', label: 'Times tables', count: mulTasks.length });
+  }
+
+  function pushReading(state, rng, opts, tasks, missions, courses, passes, passageIds) {
+    var n;
+    var used = (state.readingUsedIds || []).slice();
+    for (n = 0; n < passes; n++) {
+      var passage = n === 0 && opts.reusePassage && opts.reusePassage.id
+        ? opts.reusePassage
+        : PQReading.pickPassage(used, rng, { grade: courses.grade });
+      if (!passage) continue;
+      if (used.indexOf(passage.id) === -1) used.push(passage.id);
+      if (passageIds.indexOf(passage.id) === -1) passageIds.push(passage.id);
+      var readingTasks = PQReading.passageToTasks(passage);
+      var i;
+      for (i = 0; i < readingTasks.length; i++) tasks.push(readingTasks[i]);
+      missions.push({ id: 'reading', label: 'Reading', count: readingTasks.length });
+    }
+  }
+
   /**
-   * Build today's task list from the selected parts and times tables.
+   * Build today's task list from the selected parts, lesson focus, and times tables.
+   * A full focus keeps the usual warmup, one story, and a times-tables block.
+   * A narrower focus fills the same short session with the chosen skills.
    */
   function generateDailyQuest(state, rng, opts) {
     rng = rng || Math.random;
@@ -180,56 +263,82 @@
     var plan = dayPlanSnapshot(courses, now);
     var tasks = [];
     var missions = [];
-    var passageId = null;
+    var passageIds = [];
+    var active = activeSkills(courses, plan);
+    var full = active.addition && active.subtraction && active.reading && active.multiplication;
+    var any = active.addition || active.subtraction || active.reading || active.multiplication;
     var i;
 
-    if (courses.parts.warmup) {
-      var warmupN = opts.warmupCount != null ? opts.warmupCount : DEFAULTS.warmupCount;
-      for (i = 0; i < warmupN; i++) {
-        tasks.push(PQMath.makeAddSubTask(rng, 'warm-' + i, {
-          grade: courses.grade,
-          petName: state.petName
-        }));
-      }
-      missions.push({ id: 'warmup', label: 'Warmup', count: warmupN });
-    }
-
-    if (courses.parts.reading) {
-      var passage = opts.reusePassage && opts.reusePassage.id
-        ? opts.reusePassage
-        : PQReading.pickPassage(state.readingUsedIds || [], rng, { grade: courses.grade });
-      var readingTasks = PQReading.passageToTasks(passage);
-      for (i = 0; i < readingTasks.length; i++) tasks.push(readingTasks[i]);
-      passageId = passage.id;
-      missions.push({ id: 'reading', label: 'Reading', count: readingTasks.length });
-    }
-
-    if (courses.parts.multiply) {
-      var mulN = opts.mulCount != null ? opts.mulCount : DEFAULTS.mulCount;
-      var mulTasks = PQMath.buildMulTasks(
-        state.tableStats || {},
-        state.factStats || {},
-        rng,
-        mulN,
-        {
-          pool: poolFromPlan(plan),
-          focus: plan.focus,
-          review: plan.review,
-          introduced: plan.introduced,
-          dayIndex: plan.dayIndex,
-          grade: courses.grade,
-          tableStats: state.tableStats || {},
-          petName: state.petName,
-          idPrefix: 'mul'
+    if (!any || full) {
+      if (courses.parts.warmup) {
+        var warmupN = opts.warmupCount != null ? opts.warmupCount : DEFAULTS.warmupCount;
+        for (i = 0; i < warmupN; i++) {
+          tasks.push(PQMath.makeAddSubTask(rng, 'warm-' + i, {
+            grade: courses.grade,
+            petName: state.petName
+          }));
         }
-      );
-      for (i = 0; i < mulTasks.length; i++) tasks.push(mulTasks[i]);
-      missions.push({ id: 'multiply', label: 'Times tables', count: mulTasks.length });
+        missions.push({ id: 'warmup', label: 'Warmup', count: warmupN });
+      }
+      if (courses.parts.reading) {
+        pushReading(state, rng, opts, tasks, missions, courses, 1, passageIds);
+      }
+      if (courses.parts.multiply) {
+        var mulN = opts.mulCount != null ? opts.mulCount : DEFAULTS.mulCount;
+        pushMul(state, rng, tasks, missions, plan, courses, mulN);
+      }
+    } else {
+      var mathKinds = (active.addition ? 1 : 0) + (active.subtraction ? 1 : 0) + (active.multiplication ? 1 : 0);
+      var passes = 0;
+      if (active.reading) passes = mathKinds === 0 ? (courses.grade <= 2 ? 3 : 2) : 1;
+      var mathSlots = 16 - (passes > 1 ? passes * 3 : (passes ? 4 : 0));
+      if (mathSlots < 8 && mathKinds) mathSlots = 12;
+      if (!mathKinds) mathSlots = 0;
+      var counts = { addition: 0, subtraction: 0, multiplication: 0 };
+      if (mathKinds === 1) {
+        if (active.addition) counts.addition = Math.max(12, mathSlots);
+        else if (active.subtraction) counts.subtraction = Math.max(12, mathSlots);
+        else counts.multiplication = Math.max(12, mathSlots);
+      } else if (active.multiplication) {
+        counts.multiplication = Math.max(8, Math.ceil(mathSlots * 0.6));
+        var rest = Math.max(0, mathSlots - counts.multiplication);
+        var others = [];
+        if (active.addition) others.push('addition');
+        if (active.subtraction) others.push('subtraction');
+        var each = others.length ? Math.floor(rest / others.length) : 0;
+        var extra = others.length ? rest - each * others.length : 0;
+        for (i = 0; i < others.length; i++) counts[others[i]] = each + (i < extra ? 1 : 0);
+      } else {
+        var plain = [];
+        if (active.addition) plain.push('addition');
+        if (active.subtraction) plain.push('subtraction');
+        var share = plain.length ? Math.floor(mathSlots / plain.length) : 0;
+        var leftover = plain.length ? mathSlots - share * plain.length : 0;
+        for (i = 0; i < plain.length; i++) counts[plain[i]] = share + (i < leftover ? 1 : 0);
+      }
+      var warmCount = 0;
+      function addWarm(op, n) {
+        var k;
+        for (k = 0; k < n; k++) {
+          tasks.push(PQMath.makeAddSubTask(rng, 'warm-' + warmCount, {
+            grade: courses.grade,
+            petName: state.petName,
+            op: op
+          }));
+          warmCount += 1;
+        }
+      }
+      addWarm('add', counts.addition);
+      addWarm('sub', counts.subtraction);
+      if (warmCount) missions.push({ id: 'warmup', label: 'Warmup', count: warmCount });
+      if (passes) pushReading(state, rng, opts, tasks, missions, courses, passes, passageIds);
+      pushMul(state, rng, tasks, missions, plan, courses, counts.multiplication);
     }
 
     return {
       dateKey: PQStorage.localDateKey(now),
-      passageId: passageId,
+      passageId: passageIds.length ? passageIds[0] : null,
+      passageIds: passageIds,
       tasks: tasks,
       missions: missions,
       plan: plan
@@ -252,8 +361,8 @@
     if (state.readingUsedIds.indexOf(passageId) === -1) {
       state.readingUsedIds.push(passageId);
     }
-    if (state.readingUsedIds.length > 10) {
-      state.readingUsedIds = state.readingUsedIds.slice(-10);
+    if (state.readingUsedIds.length > 24) {
+      state.readingUsedIds = state.readingUsedIds.slice(-24);
     }
   }
 
@@ -274,10 +383,15 @@
       missions: quest.missions,
       plan: quest.plan
     };
-    if (replacePassageId && replacePassageId !== state.daily.passageId) {
+    var ids = quest.passageIds && quest.passageIds.length
+      ? quest.passageIds.slice()
+      : (quest.passageId ? [quest.passageId] : []);
+    state.daily.passageIds = ids;
+    if (replacePassageId && ids.indexOf(replacePassageId) === -1) {
       untrackPassage(state, replacePassageId);
     }
-    trackPassage(state, state.daily.passageId);
+    var p;
+    for (p = 0; p < ids.length; p++) trackPassage(state, ids[p]);
     return state;
   }
 
@@ -429,10 +543,19 @@
   function describeToday(plan) {
     plan = plan || {};
     var parts = plan.parts || {};
+    var focus = plan.lessonFocus;
     var names = [];
-    if (parts.warmup) names.push('warmup math');
-    if (parts.reading) names.push('a pet story');
-    if (parts.multiply) names.push('times tables');
+    if (focus) {
+      if (parts.warmup && focus.addition && focus.subtraction) names.push('warmup math');
+      else if (parts.warmup && focus.addition) names.push('addition');
+      else if (parts.warmup && focus.subtraction) names.push('subtraction');
+      if (parts.reading && focus.reading) names.push('a pet story');
+      if (parts.multiply && focus.multiplication) names.push('times tables');
+    } else {
+      if (parts.warmup) names.push('warmup math');
+      if (parts.reading) names.push('a pet story');
+      if (parts.multiply) names.push('times tables');
+    }
     var partsLine = '';
     if (names.length === 1) partsLine = 'Today includes ' + names[0] + '.';
     else if (names.length === 2) partsLine = 'Today includes ' + names[0] + ' and ' + names[1] + '.';
@@ -441,7 +564,8 @@
     }
 
     var tablesLine = '';
-    if (parts.multiply && plan.focus && plan.focus.length) {
+    var showTables = parts.multiply && (!focus || focus.multiplication);
+    if (showTables && plan.focus && plan.focus.length) {
       tablesLine = 'Today\u2019s tables: ' + tableLabels(plan.focus);
       if (plan.review && plan.review.length) {
         tablesLine += ', plus a little review of ' + tableLabels(plan.review);
@@ -453,7 +577,11 @@
 
   function currentMissionLabel(task) {
     if (!task) return '';
-    if (task.mission === 'warmup') return 'Warmup';
+    if (task.mission === 'warmup') {
+      if (task.type === 'add') return 'Addition';
+      if (task.type === 'sub') return 'Subtraction';
+      return 'Warmup';
+    }
     if (task.mission === 'reading') return 'Reading';
     if (task.mission === 'multiply') return 'Times tables';
     return '';

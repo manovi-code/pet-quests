@@ -83,7 +83,36 @@
     { id: 'nature-nest', fromPlace: 'nature', name: 'a twig nest', kind: 'nest', color: '#a35f38' },
     { id: 'nature-glass', fromPlace: 'nature', name: 'a pair of binoculars', kind: 'frame', color: '#5f7a52' },
     { id: 'parlor-mat', fromPlace: 'parlor', name: 'a green mat', kind: 'rug', color: '#3d6b4f' },
-    { id: 'parlor-lamp', fromPlace: 'parlor', name: 'a card-table lamp', kind: 'lamp', color: '#e8c84a' }
+    { id: 'parlor-lamp', fromPlace: 'parlor', name: 'a card-table lamp', kind: 'lamp', color: '#e8c84a' },
+    { id: 'store-jar', fromPlace: 'store', name: 'a shop jar', kind: 'vase', color: '#e8c84a' },
+    { id: 'store-ribbon', fromPlace: 'store', name: 'a shop ribbon', kind: 'cloth', color: '#d4564e' },
+    { id: 'toy-blocks', fromPlace: 'toystore', name: 'a block set', kind: 'toy', color: '#e07a5f' },
+    { id: 'toy-kite', fromPlace: 'toystore', name: 'a kite poster', kind: 'poster', color: '#8eb4c9' },
+    { id: 'book-stack', fromPlace: 'bookstore', name: 'a shop book stack', kind: 'book', color: '#c4784a' },
+    { id: 'book-mark', fromPlace: 'bookstore', name: 'a ribbon bookmark', kind: 'cloth', color: '#7a9a68' },
+    { id: 'aqua-fish', fromPlace: 'aquarium', name: 'a toy fish', kind: 'toy', color: '#8eb4c9' },
+    { id: 'aqua-plant', fromPlace: 'aquarium', name: 'a tank plant', kind: 'plant', color: '#7a9a68' },
+    { id: 'art-brush', fromPlace: 'art', name: 'a paintbrush cup', kind: 'vase', color: '#e07a5f' },
+    { id: 'art-sun', fromPlace: 'art', name: 'a painted sun', kind: 'poster', color: '#e8c84a' },
+    { id: 'music-drum', fromPlace: 'music', name: 'a hand drum', kind: 'toy', color: '#a35f38' },
+    { id: 'music-note', fromPlace: 'music', name: 'a note poster', kind: 'poster', color: '#8eb4c9' },
+    { id: 'beach-shell', fromPlace: 'beach', name: 'a striped shell', kind: 'toy', color: '#f0e0a0' },
+    { id: 'beach-pail', fromPlace: 'beach', name: 'a sand pail', kind: 'bowl', color: '#d4564e' },
+    { id: 'camp-lantern', fromPlace: 'camp', name: 'a camp lantern', kind: 'lamp', color: '#e8c84a' },
+    { id: 'camp-blanket', fromPlace: 'camp', name: 'a camp blanket', kind: 'blanket', color: '#5f7a52' },
+    { id: 'train-cap', fromPlace: 'train', name: 'a conductor cap', kind: 'cloth', color: '#3d4a62' },
+    { id: 'train-clock', fromPlace: 'train', name: 'a station clock', kind: 'clock', color: '#5f7a52' }
+  ];
+
+  var SHOP_ITEMS = [
+    { id: 'shop-star-rug', name: 'a star rug', price: 6, kind: 'rug', color: '#e8c84a', shop: true },
+    { id: 'shop-heart-pillow', name: 'a heart pillow', price: 8, kind: 'cushion', color: '#e07a5f', shop: true },
+    { id: 'shop-flower-jar', name: 'a flower jar', price: 10, kind: 'vase', color: '#7a9a68', shop: true },
+    { id: 'shop-blue-bow', name: 'a blue bow', price: 5, kind: 'cloth', color: '#8eb4c9', shop: true },
+    { id: 'shop-sunny-banner', name: 'a sunny banner', price: 12, kind: 'poster', color: '#e8c84a', shop: true },
+    { id: 'shop-polka-cloth', name: 'a polka cloth', price: 8, kind: 'cloth', color: '#c4784a', shop: true },
+    { id: 'shop-tiny-bell', name: 'a tiny bell', price: 10, kind: 'bell', color: '#e8c84a', shop: true },
+    { id: 'shop-cloud-mobile', name: 'a cloud mobile', price: 15, kind: 'poster', color: '#d7e6ef', shop: true }
   ];
 
   function act(id, label, line) {
@@ -116,10 +145,10 @@
           whenUnlock: 'pet-bowl',
           unlockLines: ['You fill the bowl. {name} eats and looks pleased.']
         },
-        act('play', 'Play', '{name} bats a soft ball, then flops down happy.'),
+        { id: 'play', label: 'Play', play: true, lines: ['{name} bats a soft ball, then flops down happy.'] },
         act('tuck', 'Tuck in', 'You pull up a blanket. {name} settles in.'),
         act('window', 'Look out the window', 'The yard is quiet. A bee visits a flower.'),
-        act('toy', 'Pick a toy', 'You roll a wooden ball. {name} watches it, then looks proud.'),
+        { id: 'toy', label: 'Pick a toy', play: true, lines: ['You roll a wooden ball. {name} watches it, then looks proud.'] },
         act('kettle', 'Check the kettle', 'The kettle hums. The kitchen smells like warm bread.'),
         act('table', 'Sit at the kitchen table', 'The table is clear and ready for a short warmup.'),
         act('cushion', 'Sit on the reading cushion', 'The cushion is soft. A good spot for a story.'),
@@ -295,7 +324,7 @@
       orQuests: 9,
       openLine: 'The playground gate is open.',
       actions: [
-        act('swing', 'Try the swing', 'You swing once, slow and easy. {name} watches from the grass.'),
+        { id: 'swing', label: 'Try the swing', play: true, lines: ['You swing once, slow and easy. {name} watches from the grass.'] },
         act('slide', 'Look at the slide', 'The slide is smooth. You can try it when you want.'),
         gift('gift', 'Find a playground gift', 'A ribbon is tied on the bench.', stickers('playground', 'a swing sticker', 'a ribbon decoration', 'a seed treat'))
       ]
@@ -421,6 +450,145 @@
       ]
     },
     {
+      id: 'store',
+      title: 'General store',
+      blurb: 'Ribbons and small things',
+      place: true,
+      needsQuests: 1,
+      needsActivities: 0,
+      openLine: 'The general store is open. Small things are on the shelves.',
+      actions: [
+        {
+          id: 'shelves',
+          label: 'Look at the shelves',
+          nav: 'shop',
+          lines: ['The shelves hold small things for a house.']
+        },
+        { id: 'bell', label: 'Ring the shop bell', play: true, lines: ['The bell gives one soft ding. The shop stays calm.'] },
+        gift('gift', 'Take a store gift', 'A ribbon is waiting by the jar.', stickers('store', 'a ribbon sticker', 'a jar decoration', 'a mint treat'))
+      ]
+    },
+    {
+      id: 'toystore',
+      title: 'Toy store',
+      blurb: 'Blocks and kites',
+      place: true,
+      needsQuests: 17,
+      needsActivities: 17,
+      orQuests: 18,
+      openLine: 'The toy store is open. The shelves are bright.',
+      actions: [
+        { id: 'blocks', label: 'Stack the blocks', play: true, lines: ['You stack three blocks. They stay put.'] },
+        act('kite', 'Look at the kites', 'Paper kites hang in a row. They do not need the wind yet.'),
+        gift('gift', 'Take a toy gift', 'A paper star is set aside for you.', stickers('toystore', 'a block sticker', 'a kite decoration', 'a sweet treat'))
+      ]
+    },
+    {
+      id: 'bookstore',
+      title: 'Bookstore',
+      blurb: 'New books to browse',
+      place: true,
+      needsQuests: 18,
+      needsActivities: 18,
+      orQuests: 19,
+      openLine: 'The bookstore door is open.',
+      actions: [
+        act('shelf', 'Browse a shelf', 'Picture books stand in a tidy row.'),
+        { id: 'page', label: 'Turn one page', play: true, lines: ['You turn one page. The picture shows a small boat.'] },
+        gift('gift', 'Take a book gift', 'A bookmark peeks from a basket.', stickers('bookstore', 'a book sticker', 'a bookmark decoration', 'a cocoa treat'))
+      ]
+    },
+    {
+      id: 'aquarium',
+      title: 'Aquarium',
+      blurb: 'Tanks and quiet fish',
+      place: true,
+      needsQuests: 19,
+      needsActivities: 19,
+      orQuests: 20,
+      openLine: 'The aquarium is open. The tanks glow softly.',
+      actions: [
+        act('watch', 'Watch a tank', 'Silver fish glide in a slow loop.'),
+        { id: 'count', label: 'Follow one fish', play: true, lines: ['You follow one fish with your eyes, then let it swim.'] },
+        gift('gift', 'Take an aquarium gift', 'A paper fish is waiting on the bench.', stickers('aquarium', 'a fish sticker', 'a shell decoration', 'a seed treat'))
+      ]
+    },
+    {
+      id: 'art',
+      title: 'Art studio',
+      blurb: 'Paint and paper',
+      place: true,
+      needsQuests: 20,
+      needsActivities: 20,
+      orQuests: 21,
+      openLine: 'The art studio is open. The paints are ready.',
+      actions: [
+        act('look', 'Look at the easel', 'A sunny painting dries on the easel.'),
+        { id: 'brush', label: 'Swish a brush', play: true, lines: ['You swish a brush in clean water. The color turns pale and calm.'] },
+        gift('gift', 'Take an art gift', 'A paper sun is yours to keep.', stickers('art', 'a paint sticker', 'a brush decoration', 'a berry treat'))
+      ]
+    },
+    {
+      id: 'music',
+      title: 'Music room',
+      blurb: 'Drums and quiet notes',
+      place: true,
+      needsQuests: 21,
+      needsActivities: 21,
+      orQuests: 22,
+      openLine: 'The music room is open.',
+      actions: [
+        { id: 'tap', label: 'Tap the drum', play: true, lines: ['You tap the drum twice, soft and even.'] },
+        act('notes', 'Look at the notes', 'The notes sit in tidy lines on the page.'),
+        gift('gift', 'Take a music gift', 'A paper note is left for you.', stickers('music', 'a note sticker', 'a drum decoration', 'a honey treat'))
+      ]
+    },
+    {
+      id: 'beach',
+      title: 'Beach',
+      blurb: 'Shells and gentle waves',
+      place: true,
+      needsQuests: 22,
+      needsActivities: 22,
+      orQuests: 23,
+      openLine: 'The beach path is open. The waves are small.',
+      actions: [
+        act('waves', 'Watch the waves', 'The waves come in and go out. Nobody has to hurry.'),
+        { id: 'shells', label: 'Sort a few shells', play: true, lines: ['You sort a few shells into a little pile.'] },
+        gift('gift', 'Take a beach gift', 'A smooth shell is yours.', stickers('beach', 'a shell sticker', 'a pail decoration', 'a cool treat'))
+      ]
+    },
+    {
+      id: 'camp',
+      title: 'Campground',
+      blurb: 'A tent and a lantern',
+      place: true,
+      needsQuests: 23,
+      needsActivities: 23,
+      orQuests: 24,
+      openLine: 'The campground path is open.',
+      actions: [
+        act('tent', 'Peek in the tent', 'The tent is cozy. A folded blanket waits inside.'),
+        { id: 'lantern', label: 'Check the lantern', play: true, lines: ['The lantern glows. The path is easy to see.'] },
+        gift('gift', 'Take a camp gift', 'A paper lantern is set aside.', stickers('camp', 'a tent sticker', 'a lantern decoration', 'a warm treat'))
+      ]
+    },
+    {
+      id: 'train',
+      title: 'Train station',
+      blurb: 'A board and a bench',
+      place: true,
+      needsQuests: 24,
+      needsActivities: 24,
+      orQuests: 25,
+      openLine: 'The train station is open.',
+      actions: [
+        act('board', 'Read the board', 'The board lists a red train and a blue train.'),
+        { id: 'bench', label: 'Sit on the bench', play: true, lines: ['You sit on the bench and watch the clock. There is time.'] },
+        gift('gift', 'Take a station gift', 'A paper ticket is a keepsake, not a real ride.', stickers('train', 'a train sticker', 'a ticket decoration', 'a snack treat'))
+      ]
+    },
+    {
       id: 'cottage',
       legacy: true,
       title: 'Cozy cottage',
@@ -467,6 +635,15 @@
     museum: { wall: '#f4efe6', roof: '#6b5344', door: '#a35f38', accent: '#8eb4c9' },
     nature: { wall: '#e7f0dc', roof: '#3d6b4f', door: '#5f7a52', accent: '#c4784a' },
     parlor: { wall: '#f3efe6', roof: '#3d6b4f', door: '#a35f38', accent: '#e8c84a' },
+    store: { wall: '#fff6ea', roof: '#c4784a', door: '#5f7a52', accent: '#e8c84a' },
+    toystore: { wall: '#fff0f4', roof: '#e07a5f', door: '#7a9a68', accent: '#8eb4c9' },
+    bookstore: { wall: '#f7f1e6', roof: '#6b5344', door: '#5f7a52', accent: '#c4784a' },
+    aquarium: { wall: '#e7f6fb', roof: '#3d6b8a', door: '#8eb4c9', accent: '#f0e0a0' },
+    art: { wall: '#fff6ee', roof: '#c4784a', door: '#e07a5f', accent: '#e8c84a' },
+    music: { wall: '#f4f0fa', roof: '#6b5344', door: '#7a8f6a', accent: '#8eb4c9' },
+    beach: { wall: '#fff6df', roof: '#e8c49a', door: '#8eb4c9', accent: '#f0e0a0' },
+    camp: { wall: '#e7f0dc', roof: '#5f7a52', door: '#a35f38', accent: '#e8c84a' },
+    train: { wall: '#f4efe6', roof: '#3d4a62', door: '#c4784a', accent: '#e8c84a' },
     cottage: { wall: '#fffaf0', roof: '#c4784a', door: '#7a9a68', accent: '#e8c84a' }
   };
 
@@ -528,6 +705,9 @@
     if (!world.solitaire || typeof world.solitaire !== 'object' || Array.isArray(world.solitaire)) {
       world.solitaire = { dateKey: null, deals: 0 };
     }
+    if (!world.playDrops || typeof world.playDrops !== 'object' || Array.isArray(world.playDrops)) {
+      world.playDrops = { dateKey: null, count: 0 };
+    }
     if (typeof world.migrateTown !== 'boolean') world.migrateTown = false;
     return world;
   }
@@ -568,7 +748,7 @@
   }
 
   function allItems() {
-    return QUEST_ITEMS.concat(PLACE_ITEMS);
+    return QUEST_ITEMS.concat(PLACE_ITEMS).concat(SHOP_ITEMS);
   }
 
   function itemById(id) {
@@ -765,6 +945,78 @@
       kind: 'treat',
       once: false,
       place: pool[0].place || null
+    };
+  }
+
+  var DROP_CAP = 2;
+
+  function dropState(state, dateKey) {
+    var world = ensureWorld(state);
+    if (!dateKey || world.playDrops.dateKey !== dateKey) {
+      world.playDrops = { dateKey: dateKey || null, count: 0 };
+    }
+    return world.playDrops;
+  }
+
+  function surprisePool(state) {
+    var items = allItems();
+    var out = [];
+    var i;
+    for (i = 0; i < items.length; i++) {
+      var item = items[i];
+      if (!item || item.shop) continue;
+      if (hasUnlock(state, item.id)) continue;
+      if (item.fromPlace && !isPlaceOpen(state, item.fromPlace)) continue;
+      out.push(item);
+    }
+    return out;
+  }
+
+  /**
+   * Playing with a toy can leave a decoration. Always positive.
+   * Capped per day. Only items that exist, and only from places she has opened.
+   */
+  function tryPlaySurprise(state, dateKey, rng) {
+    rng = rng || Math.random;
+    var drops = dropState(state, dateKey || 'today');
+    if ((drops.count || 0) >= DROP_CAP) {
+      return {
+        ok: true,
+        capped: true,
+        item: null,
+        message: 'You already found today’s play surprises. Playing is still fun.'
+      };
+    }
+    if (rng() > 0.55) {
+      return {
+        ok: true,
+        capped: false,
+        skipped: true,
+        item: null,
+        message: 'You play for a bit. It feels cozy.'
+      };
+    }
+    var pool = surprisePool(state);
+    drops.count += 1;
+    if (!pool.length) {
+      return {
+        ok: true,
+        capped: false,
+        item: null,
+        coins: 2,
+        message: 'A tiny coin surprise for playing. Two coins go in the bank.'
+      };
+    }
+    var item = pool[Math.floor(rng() * pool.length) % pool.length];
+    if (!item || !itemById(item.id)) {
+      return { ok: true, capped: false, item: null, message: 'You play for a bit. It feels cozy.' };
+    }
+    ensureWorld(state).unlocks.push(item.id);
+    return {
+      ok: true,
+      capped: false,
+      item: item,
+      message: 'Surprise! You found ' + item.name + '. It is yours to place.'
     };
   }
 
@@ -1160,6 +1412,90 @@
         R(230, 70, 70, 40, '#5f7a52', ' rx="16"') + R(248, 78, 34, 10, '#d7e6ef', ' rx="4"') +
         '<ellipse cx="80" cy="180" rx="30" ry="10" fill="#8fa87a"/>';
     }
+    if (id === 'store') {
+      return R(0, 0, 320, 36, '#d4564e') + R(0, 36, 320, 114, '#fff6ea') + R(0, 150, 320, 60, '#e7c7a1') +
+        R(16, 48, 90, 90, '#a35f38') + R(24, 58, 74, 18, '#e8c84a') + R(24, 82, 74, 18, '#8eb4c9') + R(24, 106, 74, 18, '#d4564e') +
+        '<circle cx="40" cy="67" r="6" fill="#fffaf0"/>' + '<circle cx="70" cy="91" r="6" fill="#f0e0a0"/>' +
+        R(130, 70, 70, 70, '#fffaf0', ' stroke="#c4784a" stroke-width="4"') +
+        R(150, 88, 30, 36, '#7a9a68') +
+        '<circle cx="250" cy="90" r="22" fill="#f0d56a" stroke="#a35f38" stroke-width="4"/>' +
+        '<circle cx="250" cy="90" r="8" fill="#fff4c4"/>';
+    }
+    if (id === 'toystore') {
+      return R(0, 0, 320, 150, '#ffe4ef') + R(0, 150, 320, 60, '#f0d2c4') +
+        R(0, 0, 320, 18, '#e07a5f') + R(0, 18, 320, 8, '#fffaf0') +
+        R(20, 40, 120, 100, '#fffaf0', ' stroke="#e07a5f" stroke-width="4"') +
+        '<circle cx="48" cy="70" r="12" fill="#d4564e"/>' + '<circle cx="80" cy="74" r="10" fill="#e8c84a"/>' +
+        '<rect x="100" y="60" width="22" height="22" fill="#8eb4c9"/>' +
+        '<polygon points="210,130 250,70 290,130" fill="#e8c49a"/>' +
+        '<path d="M230 60 Q270 20 300 70" fill="none" stroke="#d4564e" stroke-width="3"/>';
+    }
+    if (id === 'bookstore') {
+      return R(0, 0, 320, 150, '#f4efe6') + R(0, 150, 320, 60, '#d9c7ae') +
+        R(16, 28, 80, 110, '#6b5344') + R(26, 40, 14, 36, '#c4784a') + R(44, 40, 14, 36, '#e8c84a') + R(62, 40, 14, 36, '#7a9a68') +
+        R(26, 84, 14, 36, '#8eb4c9') + R(44, 84, 14, 36, '#d4564e') + R(62, 84, 14, 36, '#f0e0a0') +
+        R(120, 80, 90, 50, '#fffaf0', ' stroke="#6b5344" stroke-width="4"') +
+        R(140, 92, 50, 8, '#c4784a') +
+        R(230, 36, 70, 90, '#5f7a52') + R(242, 48, 46, 60, '#fffaf0');
+    }
+    if (id === 'aquarium') {
+      return R(0, 0, 320, 210, '#d5eef8') +
+        R(16, 24, 130, 150, '#8eb4c9', ' stroke="#3d6b8a" stroke-width="6"') +
+        '<ellipse cx="70" cy="90" rx="28" ry="12" fill="#b7d4e4"/>' +
+        '<ellipse cx="60" cy="100" rx="16" ry="8" fill="#f0e0a0"/>' +
+        '<circle cx="48" cy="98" r="3" fill="#2c241c"/>' +
+        '<ellipse cx="100" cy="120" rx="14" ry="7" fill="#fffaf0"/>' +
+        R(170, 24, 130, 150, '#7aa8c4', ' stroke="#3d6b8a" stroke-width="6"') +
+        '<circle cx="220" cy="80" r="10" fill="#e07a5f"/>' +
+        '<circle cx="250" cy="110" r="8" fill="#e8c84a"/>' +
+        '<path d="M190 140 Q230 120 270 140" fill="#7a9a68"/>';
+    }
+    if (id === 'art') {
+      return R(0, 0, 320, 150, '#fff1e4') + R(0, 150, 320, 60, '#e7c7a1') +
+        '<polygon points="70,150 110,70 150,150" fill="#c4784a"/>' +
+        R(90, 70, 40, 30, '#fffaf0') + '<circle cx="110" cy="84" r="8" fill="#e8c84a"/>' +
+        '<circle cx="200" cy="120" r="16" fill="#d4564e"/>' +
+        '<circle cx="230" cy="110" r="14" fill="#e8c84a"/>' +
+        '<circle cx="258" cy="122" r="14" fill="#8eb4c9"/>' +
+        R(40, 160, 240, 12, '#a35f38');
+    }
+    if (id === 'music') {
+      return R(0, 0, 320, 150, '#f4f0fa') + R(0, 150, 320, 60, '#d9c7ae') +
+        R(30, 70, 140, 70, '#2c241c', ' rx="8"') +
+        R(40, 80, 120, 16, '#fffaf0') + R(40, 104, 120, 16, '#5c4030') +
+        '<ellipse cx="230" cy="90" rx="28" ry="18" fill="#a35f38"/>' +
+        '<ellipse cx="230" cy="90" rx="10" ry="6" fill="#f0e0a0"/>' +
+        '<circle cx="270" cy="50" r="8" fill="#8eb4c9"/>' +
+        '<path d="M270 50 V90" stroke="#3d4a62" stroke-width="3"/>';
+    }
+    if (id === 'beach') {
+      return R(0, 0, 320, 90, '#c5e4f5') + '<circle cx="250" cy="36" r="16" fill="#f0e0a0"/>' +
+        R(0, 90, 320, 50, '#8eb4c9') + R(0, 140, 320, 70, '#f0e0a0') +
+        '<path d="M0 100 Q40 80 80 100 T160 100 T240 100 T320 100" fill="none" stroke="#fffaf0" stroke-width="4"/>' +
+        '<polygon points="70,150 110,90 150,150" fill="#d4564e"/>' +
+        '<line x1="110" y1="90" x2="110" y2="150" stroke="#a35f38" stroke-width="3"/>' +
+        '<circle cx="220" cy="170" r="8" fill="#fffaf0"/>' +
+        '<circle cx="246" cy="176" r="6" fill="#e8c49a"/>';
+    }
+    if (id === 'camp') {
+      return R(0, 0, 320, 120, '#d5eef8') + R(0, 120, 320, 90, '#8fa87a') +
+        '<polygon points="40,150 110,70 180,150" fill="#5f7a52"/>' +
+        '<polygon points="100,150 120,110 140,150" fill="#243c2c"/>' +
+        R(210, 80, 8, 50, '#a35f38') +
+        '<polygon points="190,90 250,90 230,70" fill="#e8c84a"/>' +
+        '<circle cx="230" cy="100" r="8" fill="#f0e0a0"/>' +
+        '<circle cx="60" cy="40" r="3" fill="#fffaf0"/>' +
+        '<circle cx="90" cy="28" r="2" fill="#fffaf0"/>';
+    }
+    if (id === 'train') {
+      return R(0, 0, 320, 150, '#e7eef6') + R(0, 150, 320, 60, '#c4a574') +
+        R(16, 70, 150, 70, '#d4564e', ' rx="8"') +
+        R(30, 84, 28, 22, '#d7e6ef') + R(68, 84, 28, 22, '#d7e6ef') + R(106, 84, 28, 22, '#d7e6ef') +
+        '<circle cx="48" cy="148" r="12" fill="#2c241c"/>' + '<circle cx="130" cy="148" r="12" fill="#2c241c"/>' +
+        R(190, 30, 16, 70, '#a35f38') + '<circle cx="198" cy="28" r="10" fill="#e8c84a"/>' +
+        R(220, 60, 80, 50, '#fffaf0', ' stroke="#3d4a62" stroke-width="3"') +
+        '<text x="260" y="90" text-anchor="middle" font-size="14" fill="#3d4a62" font-family="Georgia, serif">2 · 4</text>';
+    }
     if (id === 'parlor') {
       return R(0, 0, 320, 150, '#2f4a3c') + R(0, 150, 320, 60, '#1f3329') +
         R(18, 22, 36, 70, '#c4784a') + R(266, 22, 36, 70, '#c4784a') +
@@ -1216,6 +1552,15 @@
     if (id === 'museum') return '<rect x="74" y="46" width="16" height="14" fill="#fffaf0" stroke="#6b5344"/>';
     if (id === 'nature') return '<circle cx="86" cy="40" r="8" fill="#7a9a68"/>';
     if (id === 'parlor') return '<rect x="74" y="48" width="10" height="14" fill="#fffaf0" stroke="' + accent + '"/>';
+    if (id === 'store') return '<circle cx="60" cy="58" r="8" fill="#f0d56a" stroke="#a35f38"/>';
+    if (id === 'toystore') return '<circle cx="40" cy="58" r="6" fill="#d4564e"/><rect x="54" y="52" width="10" height="10" fill="#8eb4c9"/>';
+    if (id === 'bookstore') return '<rect x="70" y="48" width="8" height="16" fill="#c4784a"/><rect x="80" y="46" width="8" height="18" fill="#e8c84a"/>';
+    if (id === 'aquarium') return '<ellipse cx="60" cy="60" rx="14" ry="6" fill="#8eb4c9"/>';
+    if (id === 'art') return '<circle cx="70" cy="56" r="6" fill="#d4564e"/><circle cx="84" cy="60" r="5" fill="#e8c84a"/>';
+    if (id === 'music') return '<ellipse cx="78" cy="56" rx="10" ry="6" fill="#a35f38"/>';
+    if (id === 'beach') return '<circle cx="86" cy="28" r="6" fill="#f0e0a0"/>';
+    if (id === 'camp') return '<polygon points="70,62 86,40 102,62" fill="#5f7a52"/>';
+    if (id === 'train') return '<rect x="68" y="50" width="22" height="12" fill="#d4564e"/>';
     return '<circle cx="60" cy="52" r="5" fill="' + accent + '"/>';
   }
 
@@ -1299,6 +1644,8 @@
     UNLOCKS: UNLOCKS,
     QUEST_ITEMS: QUEST_ITEMS,
     PLACE_ITEMS: PLACE_ITEMS,
+    SHOP_ITEMS: SHOP_ITEMS,
+    DROP_CAP: DROP_CAP,
     STARTER_IDS: STARTER_IDS,
     SLOT_COUNT: SLOT_COUNT,
     getHouse: getHouse,
@@ -1325,6 +1672,7 @@
     grantPrize: grantPrize,
     actionsFor: actionsFor,
     playAction: playAction,
+    tryPlaySurprise: tryPlaySurprise,
     placementsFor: placementsFor,
     placeItem: placeItem,
     moveItem: moveItem,

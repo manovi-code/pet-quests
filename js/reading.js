@@ -783,6 +783,231 @@
           answer: 0
         }
       ]
+    },
+    {
+      id: 'r37',
+      level: 1,
+      title: 'Red Cup',
+      words: [{ word: 'sip', say: 'A sip is a tiny drink.' }],
+      text: 'Maple had a red cup. She took one sip. The cup stayed on the mat.',
+      questions: [
+        {
+          q: 'What color was the cup?',
+          choices: ['Red', 'Blue', 'Black', 'Green'],
+          answer: 0,
+          skill: 'detail'
+        },
+        {
+          q: 'Where did the cup stay?',
+          choices: ['On the mat', 'In the pond', 'On the roof', 'In a boot'],
+          answer: 0,
+          skill: 'detail'
+        }
+      ]
+    },
+    {
+      id: 'r38',
+      level: 1,
+      title: 'Soft Mat',
+      words: [{ word: 'mat', say: 'A mat is a small rug by the door.' }],
+      text: 'A soft mat sat by the door. Maple sat on it. She did not rush.',
+      questions: [
+        {
+          q: 'Where was the mat?',
+          choices: ['By the door', 'In a tree', 'On a boat', 'In the oven'],
+          answer: 0,
+          skill: 'detail'
+        },
+        {
+          q: 'What did Maple do on the mat?',
+          choices: ['She sat', 'She swam', 'She rang a bell', 'She hid a book'],
+          answer: 0,
+          skill: 'detail'
+        }
+      ]
+    },
+    {
+      id: 'r39',
+      level: 1,
+      title: 'Big Hat',
+      words: [{ word: 'brim', say: 'The brim is the edge of a hat.' }],
+      text: 'Fern had a big hat. The brim was wide. Maple looked up and smiled.',
+      questions: [
+        {
+          q: 'Who had a big hat?',
+          choices: ['Fern', 'A fish', 'A train', 'A bell'],
+          answer: 0,
+          skill: 'detail'
+        },
+        {
+          q: 'What did Maple do?',
+          choices: ['Looked up and smiled', 'Ran to the pond', 'Ate the hat', 'Closed the shop'],
+          answer: 0,
+          skill: 'sequence'
+        }
+      ]
+    },
+    {
+      id: 'r40',
+      level: 1,
+      title: 'Pet Nap',
+      words: [{ word: 'nap', say: 'A nap is a short rest.' }],
+      text: 'After a walk, Maple took a nap. The room was quiet. She woke up soft and slow.',
+      questions: [
+        {
+          q: 'When did Maple take a nap?',
+          choices: ['After a walk', 'Before breakfast', 'On a boat', 'At the bakery'],
+          answer: 0,
+          skill: 'sequence'
+        },
+        {
+          q: 'How was the room?',
+          choices: ['Quiet', 'Full of drums', 'Very wet', 'Dark as a cave'],
+          answer: 0,
+          skill: 'detail'
+        }
+      ]
+    },
+    {
+      id: 'r41',
+      level: 2,
+      title: 'Tidy Shelf',
+      words: [{ word: 'tidy', say: 'Tidy means neat and in a good order.' }],
+      text: 'Maple helped make the shelf tidy. She stood each book in a neat row and left a small space for a new one. Fern handed her a blue book. Maple slid it in without bending the page.',
+      questions: [
+        {
+          q: 'What does tidy mean in this story?',
+          choices: ['Neat', 'Loud', 'Broken', 'Wet'],
+          answer: 0,
+          skill: 'vocabulary'
+        },
+        {
+          q: 'What color was the book Fern handed over?',
+          choices: ['Blue', 'Orange', 'Black', 'Silver'],
+          answer: 0,
+          skill: 'detail'
+        },
+        {
+          q: 'What did Maple do with the blue book?',
+          choices: ['Slid it onto the shelf', 'Threw it in the pond', 'Hid it in a boot', 'Used it as a plate'],
+          answer: 0,
+          skill: 'detail'
+        }
+      ]
+    },
+    {
+      id: 'r42',
+      level: 2,
+      title: 'Market List',
+      words: [{ word: 'list', say: 'A list is a short set of things to remember.' }],
+      text: 'Maple carried a list to the market. It said apples, bread, and a red ribbon. She found the apples first, then the bread. The ribbon was last, tied in a small bow on a hook.',
+      questions: [
+        {
+          q: 'What was on the list?',
+          choices: ['Apples, bread, and a red ribbon', 'Boats and trains', 'Hats and boots only', 'A drum and a bell'],
+          answer: 0,
+          skill: 'detail'
+        },
+        {
+          q: 'What did Maple find first?',
+          choices: ['The apples', 'The ribbon', 'A duck', 'A lantern'],
+          answer: 0,
+          skill: 'sequence'
+        },
+        {
+          q: 'What is a list in this story?',
+          choices: ['Things to remember', 'A kind of soup', 'A loud bell', 'A place to swim'],
+          answer: 0,
+          skill: 'vocabulary'
+        }
+      ]
+    },
+    {
+      id: 'r43',
+      level: 2,
+      title: 'Pond Path',
+      words: [{ word: 'bank', say: 'Here, a bank is the ground beside the water.' }],
+      text: 'Maple walked the path to the pond and sat on the grassy bank. Two ducks made a thin line on the water. She counted them once, then watched a frog hop to a flat stone.',
+      questions: [
+        {
+          q: 'Where did Maple sit?',
+          choices: ['On the grassy bank', 'In the bakery', 'On the school roof', 'Inside a train'],
+          answer: 0,
+          skill: 'detail'
+        },
+        {
+          q: 'How many ducks did she count?',
+          choices: ['Two', 'Ten', 'Zero', 'Seven'],
+          answer: 0,
+          skill: 'detail'
+        },
+        {
+          q: 'What happened after she counted the ducks?',
+          choices: ['A frog hopped to a stone', 'The pond dried up', 'She rang a bell', 'The ducks drove a truck'],
+          answer: 0,
+          skill: 'sequence'
+        }
+      ]
+    },
+    {
+      id: 'r44',
+      level: 3,
+      title: 'Half a Rainy Afternoon',
+      words: [
+        { word: 'patient', say: 'Patient means you can wait without a fuss.' },
+        { word: 'harbor', say: 'A harbor is a safe place for a boat.' }
+      ],
+      text: 'Rain kept Maple and Fern inside the library for a long afternoon. They picked a chapter about a small boat, a storm, and a calm harbor. The first page showed dark waves. The next page showed a lantern in a window.\n\nMaple read one paragraph and stopped when a word felt new. She looked at the picture of the harbor and tried the word again. Fern waited and did not tap the page. That wait was patient, even though nobody said the word out loud.\n\nWhen the chapter ended, the boat was tied up and the rain in the story had slowed. Outside the real window, the rain had slowed too. They marked the page with a leaf and agreed the next chapter could wait until tomorrow.',
+      questions: [
+        {
+          q: 'What is this story mostly about?',
+          choices: ['Friends reading on a rainy afternoon', 'A race across town', 'Baking four pans of rolls', 'A lost bicycle'],
+          answer: 0,
+          skill: 'main'
+        },
+        {
+          q: 'What shows that Fern was patient?',
+          choices: ['Fern waited and did not tap the page', 'Fern shut the book', 'Fern ran outside', 'Fern hid the leaf'],
+          answer: 0,
+          skill: 'inference'
+        },
+        {
+          q: 'What does harbor mean here?',
+          choices: ['A safe place for a boat', 'A loud drum', 'A kind of bread', 'A school bell'],
+          answer: 0,
+          skill: 'vocabulary'
+        }
+      ]
+    },
+    {
+      id: 'r45',
+      level: 3,
+      title: 'The Quiet Platform',
+      words: [
+        { word: 'platform', say: 'A platform is the place where you wait for a train.' },
+        { word: 'schedule', say: 'A schedule tells what time things happen.' }
+      ],
+      text: 'The train station was bright and not crowded. A board listed two trains. The red train would leave at 2 and stop by the pond. The blue train would leave at 4 and stop by the beach. Maple wanted the beach, so she read the schedule twice before she moved.\n\nFern pointed at the blue line and then at the clock. There was still time. They sat on a bench and shared a small apple. Maple did not stand near the edge. She kept her paws behind the yellow line because the board said to wait there.\n\nWhen the blue train arrived, they let other riders step off first. Then they found two seats by a window. Maple watched the platform slide away and said the beach stop out loud so she would not forget it.',
+      questions: [
+        {
+          q: 'Which train should Maple take to the beach?',
+          choices: ['The blue train', 'The red train', 'A boat', 'Neither train'],
+          answer: 0,
+          skill: 'inference'
+        },
+        {
+          q: 'What happened first?',
+          choices: ['Maple read the schedule', 'The platform slid away', 'They found window seats', 'The apple rolled under the train'],
+          answer: 0,
+          skill: 'sequence'
+        },
+        {
+          q: 'What is a platform in this story?',
+          choices: ['The place where you wait for a train', 'A kind of sandwich', 'A fish tank', 'A bakery shelf'],
+          answer: 0,
+          skill: 'vocabulary'
+        }
+      ]
     }
   ];
 
@@ -861,6 +1086,30 @@
     return 0;
   }
 
+  function wordCount(text) {
+    return String(text || '').trim().split(/\s+/).length;
+  }
+
+  function preferBand(pool, grade) {
+    var band = pool;
+    if (grade === 1) {
+      var short = pool.filter(function (p) {
+        return wordCount(p.text) <= 28 && String(p.text).indexOf('\n\n') === -1 && p.words && p.words.length;
+      });
+      if (short.length) band = short;
+    } else if (grade === 2) {
+      var longer = pool.filter(function (p) { return wordCount(p.text) > 28; });
+      if (longer.length) band = longer;
+    } else if (grade === 4) {
+      var single = pool.filter(function (p) { return String(p.text).indexOf('\n\n') === -1; });
+      if (single.length) band = single;
+    } else if (grade === 5) {
+      var multi = pool.filter(function (p) { return String(p.text).indexOf('\n\n') !== -1; });
+      if (multi.length) band = multi;
+    }
+    return band;
+  }
+
   function pickPassage(usedIds, rng, options) {
     rng = rng || Math.random;
     usedIds = usedIds || [];
@@ -877,6 +1126,7 @@
       }
       if (band.length) pool = band;
     }
+    pool = preferBand(pool, parseInt(options.grade, 10));
     var idx = Math.floor(rng() * pool.length);
     return pool[idx];
   }
@@ -920,6 +1170,9 @@
       passageId: passage.id,
       title: passage.title,
       text: passage.text,
+      words: (passage.words || []).map(function (word) {
+        return { word: word.word, say: word.say };
+      }),
       missCount: 0
     });
     var qs = passage.questions || [];
@@ -934,6 +1187,7 @@
         question: qs[i].q,
         choices: qs[i].choices.slice(),
         answer: qs[i].answer,
+        skill: qs[i].skill || 'detail',
         missCount: 0
       });
     }

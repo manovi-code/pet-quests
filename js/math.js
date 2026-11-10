@@ -499,7 +499,7 @@
     rng = rng || Math.random;
     options = options || {};
     var caps = warmupCaps(options.grade == null ? 2 : options.grade);
-    var isAdd = rng() < 0.55;
+    var isAdd = options.op === 'sub' ? false : (options.op === 'add' ? true : rng() < 0.55);
     var a, b, answer, prompt, type;
     if (caps.single) {
       if (isAdd) {
@@ -786,9 +786,9 @@
       return 'You figured it out — well done!';
     }
     if (missCount === 1) {
-      return 'Not quite — try once more.';
+      return 'Not yet — try once more.';
     }
-    return 'Let us walk through it together.';
+    return 'Not yet — let us walk through it together.';
   }
 
   /**
@@ -802,6 +802,7 @@
         correct: true,
         task: task,
         message: encouragement(true, task.missCount || 0),
+        fact: task.prompt + ' = ' + task.answer,
         hint: null,
         forceShowAnswer: false,
         done: true

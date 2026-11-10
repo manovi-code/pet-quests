@@ -47,6 +47,7 @@ body {
   line-height: 1.45;
   -webkit-text-size-adjust: 100%;
   text-size-adjust: 100%;
+  overflow-x: hidden;
 }
 
 body {
@@ -914,6 +915,10 @@ h2.section-title {
   gap: 8px;
 }
 
+.item-actions {
+  grid-template-columns: 1fr 1fr 1fr;
+}
+
 .item-name {
   margin: 0;
   font-family: var(--font);
@@ -1011,6 +1016,278 @@ h2.section-title {
     animation: none !important;
     transition: none !important;
     scroll-behavior: auto !important;
+  }
+}
+
+.bank-chip {
+  min-height: var(--tap);
+  border-radius: 999px;
+  border: 2px solid var(--terracotta);
+  background: #fff6df;
+  font-weight: 750;
+  padding: 10px 16px;
+}
+
+.calendar {
+  display: grid;
+  gap: 6px;
+}
+
+.calendar-title,
+.whats-new {
+  margin: 0;
+  text-align: center;
+}
+
+.whats-new span {
+  display: block;
+  font-weight: 750;
+  color: var(--sage-deep);
+}
+
+.calendar-row {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 4px;
+}
+
+.cal-day {
+  min-height: 52px;
+  border-radius: 12px;
+  background: var(--cream);
+  border: 1px solid var(--line);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  font-size: 0.72rem;
+}
+
+.cal-day strong {
+  font-size: 1rem;
+  color: var(--ink-soft);
+}
+
+.cal-day.has-sticker {
+  background: #f3f7ee;
+  border-color: var(--sage);
+}
+
+.cal-day.has-sticker strong {
+  color: var(--sage-deep);
+}
+
+.big-feedback {
+  padding: 16px;
+}
+
+.feedback-row {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.mark {
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 2rem;
+  font-weight: 800;
+  flex: 0 0 auto;
+}
+
+.mark-yes {
+  background: #3d6b4f;
+  color: #fffaf0;
+}
+
+.mark-yet {
+  background: #f0e0a0;
+  color: #5c4030;
+}
+
+.mark-word,
+.fact-line,
+.coin-gain {
+  font-family: var(--font);
+  font-size: 1.35rem;
+  margin: 0;
+}
+
+.fact-line {
+  font-size: 1.8rem;
+}
+
+.react-pet {
+  width: 96px;
+  height: 96px;
+  margin-left: auto;
+}
+
+.pet-svg.mood-happy {
+  animation: pet-bounce 0.7s ease;
+}
+
+@keyframes pet-bounce {
+  0% { transform: translateY(0); }
+  35% { transform: translateY(-8px); }
+  100% { transform: translateY(0); }
+}
+
+.preteach {
+  background: #f3f7ee;
+  border-radius: 12px;
+  padding: 10px 12px;
+}
+
+.preteach p {
+  margin: 4px 0 0;
+}
+
+.recipe-card {
+  background: #fff6df;
+  border: 2px dashed var(--terracotta);
+  border-radius: 14px;
+  padding: 12px;
+}
+
+.recipe-card p {
+  margin: 0;
+  font-family: var(--font);
+  font-size: 1.15rem;
+}
+
+.coin-row,
+.coin-picked {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: center;
+}
+
+.coin-btn,
+.coin-mini {
+  min-height: 64px;
+  min-width: 72px;
+  border-radius: 16px;
+  border: 2px solid var(--terracotta);
+  background: #fffaf0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 6px;
+}
+
+.coin-svg {
+  width: 56px;
+  height: 56px;
+}
+
+.room-compact,
+.room-compact .room-svg {
+  min-height: 140px;
+  height: 140px;
+}
+
+.home-actions {
+  display: grid;
+  gap: 8px;
+}
+
+.shop-item {
+  text-align: left;
+}
+
+@media (min-width: 700px) {
+  #app {
+    max-width: 1040px;
+    width: auto;
+  }
+
+  .house-grid {
+    grid-template-columns: 1fr 1fr;
+    gap: 14px;
+  }
+
+  .house-card {
+    min-height: 210px;
+    padding: 16px;
+  }
+
+  .house-art svg {
+    height: 120px;
+    width: auto;
+  }
+
+  .room-wrap,
+  .room-svg {
+    min-height: 280px;
+    height: 320px;
+  }
+
+  .garden-banner,
+  .skyline-svg {
+    min-height: 190px;
+    height: 200px;
+  }
+
+  .room-compact,
+  .room-compact .room-svg {
+    min-height: 180px;
+    height: 180px;
+  }
+
+  .prompt {
+    font-size: 3rem;
+  }
+
+  h2 {
+    font-size: 2rem;
+  }
+
+  .key {
+    min-height: 72px;
+    font-size: 1.6rem;
+  }
+
+  .pet-on-banner {
+    width: 150px;
+    height: 150px;
+  }
+}
+
+@media (min-width: 800px) {
+  .home-layout {
+    display: grid;
+    grid-template-columns: minmax(300px, 0.9fr) minmax(380px, 1.15fr);
+    gap: 18px;
+    align-items: start;
+  }
+
+  .quest .math-card,
+  .panel.game,
+  .panel.shop {
+    display: grid;
+    gap: 14px;
+  }
+}
+
+@media (min-width: 1000px) and (orientation: landscape) {
+  #app {
+    max-width: 1180px;
+  }
+
+  .home-layout {
+    grid-template-columns: 0.85fr 1.15fr;
+  }
+
+  .house-grid {
+    grid-template-columns: 1fr 1fr;
   }
 }
 
