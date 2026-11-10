@@ -45,8 +45,8 @@
     if (kind === 'correct') {
       beep(523.25, 0.12, 'sine', 0.05);
       setTimeout(function () { beep(659.25, 0.14, 'sine', 0.045); }, 90);
-    } else if (kind === 'soft') {
-      beep(392, 0.08, 'sine', 0.03);
+    } else if (kind === 'soft' || kind === 'gentle') {
+      beep(392, 0.1, 'sine', 0.028);
     } else if (kind === 'tap') {
       beep(440, 0.04, 'triangle', 0.025);
     } else if (kind === 'celebrate') {

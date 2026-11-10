@@ -77,7 +77,22 @@
         },
         tables: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
         grade: 2,
-        rank: 'explorer'
+        rank: 'explorer',
+        lessonFocus: {
+          addition: true,
+          subtraction: true,
+          multiplication: true,
+          reading: true
+        }
+      },
+      bank: {
+        coins: 0
+      },
+      days: {
+        giftDates: [],
+        visitDates: [],
+        careDate: null,
+        weeklyClaimed: null
       },
       world: {
         unlocks: [],
@@ -92,6 +107,10 @@
         solitaire: {
           dateKey: null,
           deals: 0
+        },
+        playDrops: {
+          dateKey: null,
+          count: 0
         },
         activity: {
           dateKey: null,

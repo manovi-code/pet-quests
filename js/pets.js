@@ -91,8 +91,9 @@
     else body = puppySvg(stage);
 
     var title = opts.title ? '<title>' + escapeXml(opts.title) + '</title>' : '';
+    var mood = opts.mood === 'happy' || opts.mood === 'cheer' ? opts.mood : 'calm';
     return (
-      '<svg class="pet-svg" viewBox="0 0 200 200" width="100%" height="100%" role="img" aria-label="' +
+      '<svg class="pet-svg mood-' + mood + '" viewBox="0 0 200 200" width="100%" height="100%" role="img" aria-label="' +
       escapeXml(opts.label || petId) +
       '">' +
       title +
@@ -101,8 +102,32 @@
       ') translate(-100 -110)">' +
       body +
       accessory +
+      moodLayer(mood) +
       '</g></svg>'
     );
+  }
+
+  function moodLayer(mood) {
+    if (mood === 'happy') {
+      return (
+        '<ellipse cx="78" cy="112" rx="8" ry="4.5" fill="#f0a090" opacity="0.7"/>' +
+        '<ellipse cx="122" cy="112" rx="8" ry="4.5" fill="#f0a090" opacity="0.7"/>' +
+        '<path d="M88 118 Q100 132 112 118" fill="none" stroke="#5c4030" stroke-width="2.4" stroke-linecap="round"/>' +
+        '<g fill="#e8c84a">' +
+        '<circle cx="46" cy="64" r="2.4"/>' +
+        '<circle cx="156" cy="70" r="2"/>' +
+        '<circle cx="150" cy="132" r="2.2"/>' +
+        '</g>'
+      );
+    }
+    if (mood === 'cheer') {
+      return (
+        '<ellipse cx="78" cy="112" rx="7" ry="4" fill="#f0a090" opacity="0.45"/>' +
+        '<ellipse cx="122" cy="112" rx="7" ry="4" fill="#f0a090" opacity="0.45"/>' +
+        '<path d="M92 120 Q100 126 108 120" fill="none" stroke="#5c4030" stroke-width="2" stroke-linecap="round"/>'
+      );
+    }
+    return '';
   }
 
   function escapeXml(s) {
