@@ -103,6 +103,7 @@
         activitiesDone: 0,
         hintTokens: 0,
         placements: {},
+        log: [],
         migrateTown: false,
         solitaire: {
           dateKey: null,

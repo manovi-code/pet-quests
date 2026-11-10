@@ -19,6 +19,7 @@ var PQParty = require(path.join(root, 'party.js'));
 var PQBank = require(path.join(root, 'bank.js'));
 var PQShop = require(path.join(root, 'shop.js'));
 var PQGames = require(path.join(root, 'games.js'));
+var PQBoards = require(path.join(root, 'boards.js'));
 var PQDays = require(path.join(root, 'days.js'));
 var fs = require('fs');
 
@@ -1322,7 +1323,7 @@ test('champion questions are harder than scout across math, reading, and shop', 
 });
 
 test('no gambling paths in the bank, shop, or place games', function () {
-  ['bank.js', 'shop.js', 'games.js', 'days.js', 'world.js'].forEach(function (file) {
+  ['bank.js', 'shop.js', 'games.js', 'days.js', 'world.js', 'boards.js'].forEach(function (file) {
     var src = fs.readFileSync(path.join(root, file), 'utf8');
     assert.ok(!/wager|jackpot|losing streak|paid spin|\bbet\b/i.test(src), file);
   });
@@ -1340,6 +1341,382 @@ test('no gambling paths in the bank, shop, or place games', function () {
   assert.strictEqual(again.coins, 0);
   var cal = PQDays.calendar(state, '2026-11-02');
   assert.ok(!/shame|missed|broke|lost your/i.test(cal.note));
+});
+
+test('drag position saving keeps schema 1 and reloads', function () {
+  assert.strictEqual(PQStorage.SCHEMA_VERSION, 1);
+  var mem = {};
+  var raw = {
+    getItem: function (k) { return Object.prototype.hasOwnProperty.call(mem, k) ? mem[k] : null; },
+    setItem: function (k, v) { mem[k] = String(v); },
+    removeItem: function (k) { delete mem[k]; }
+  };
+  var s = PQStorage.createStore(raw);
+  var state = s.defaultState();
+  state.onboardingDone = true;
+  state.petId = 'bunny';
+  state.world.unlocks = ['pet-bowl'];
+  var placed = PQWorld.placeItem(state, 'pet', 'pet-bowl');
+  assert.ok(placed);
+  assert.ok(placed.x >= 10 && placed.x <= 90);
+  assert.ok(placed.y >= 16 && placed.y <= 72);
+  var moved = PQWorld.setItemPosition(state, 'pet', 'pet-bowl', 33, 47);
+  assert.strictEqual(moved.x, 33);
+  assert.strictEqual(moved.y, 47);
+  assert.strictEqual(moved.itemId, 'pet-bowl');
+  var clamped = PQWorld.setItemPosition(state, 'pet', 'pet-bowl', -20, 180);
+  assert.strictEqual(clamped.x, 10);
+  assert.strictEqual(clamped.y, 72);
+  assert.strictEqual(s.save(state), true);
+  var loaded = s.load();
+  assert.strictEqual(loaded.version, 1);
+  assert.strictEqual(loaded.petId, 'bunny');
+  assert.strictEqual(loaded.world.placements.pet[0].itemId, 'pet-bowl');
+  assert.strictEqual(loaded.world.placements.pet[0].x, 10);
+  assert.strictEqual(loaded.world.placements.pet[0].y, 72);
+  assert.strictEqual(PQWorld.returnItem(loaded, 'pet', 'pet-bowl'), true);
+  assert.strictEqual(PQWorld.placementsFor(loaded, 'pet').length, 0);
+  assert.strictEqual(PQWorld.setItemPosition(state, 'pet', 'zoo-leaf', 40, 40), null);
+});
+
+test('selection wheel shows only unlocked items, grouped with counts', function () {
+  var state = PQStorage.defaultState();
+  assert.deepStrictEqual(PQWorld.wheelGroups(state), []);
+  assert.strictEqual(PQWorld.wheelText(state), '');
+  PQWorld.grantNextUnlock(state);
+  var groups = PQWorld.wheelGroups(state);
+  assert.ok(groups.length >= 1);
+  var seen = [];
+  groups.forEach(function (group) {
+    assert.strictEqual(group.count, group.items.length);
+    assert.ok(group.count > 0);
+    group.items.forEach(function (item) {
+      seen.push(item.id);
+      assert.strictEqual(PQWorld.hasUnlock(state, item.id), true);
+    });
+  });
+  assert.ok(seen.indexOf('pet-bowl') !== -1);
+  assert.strictEqual(seen.indexOf('library-seat'), -1);
+  assert.strictEqual(seen.indexOf('zoo-leaf'), -1);
+  var text = PQWorld.wheelText(state);
+  assert.ok(text.indexOf('a food bowl') !== -1);
+  assert.ok(/Cozy|Home|Lights|Plants|Toys|Pictures/.test(text));
+  PQWorld.allItems().forEach(function (item) {
+    if (PQWorld.hasUnlock(state, item.id)) return;
+    assert.strictEqual(text.indexOf(item.name), -1, item.name);
+  });
+});
+
+test('building fronts are distinct and motion can be turned off', function () {
+  var ids = ['pet', 'library', 'school', 'bakery', 'firehouse', 'aquarium', 'zoo', 'parlor', 'store', 'beach', 'farm', 'market'];
+  var seen = {};
+  ids.forEach(function (id) {
+    var svg = PQWorld.renderHouseFront(id);
+    assert.ok(svg.indexOf('<svg') !== -1, id);
+    assert.ok(!seen[svg], 'front reused for ' + id);
+    seen[svg] = true;
+    assert.ok(/idle-smoke|idle-flag|idle-spark|idle-glow|idle-bubble|idle-wave/.test(svg), id);
+  });
+  var roomA = PQWorld.renderRoomSvg('library', PQStorage.defaultState());
+  var roomB = PQWorld.renderRoomSvg('bakery', PQStorage.defaultState());
+  assert.notStrictEqual(roomA, roomB);
+  assert.ok(/idle-/.test(roomA) && /idle-/.test(roomB));
+  var css = fs.readFileSync(path.join(__dirname, '..', 'css', 'styles.css'), 'utf8');
+  assert.ok(/prefers-reduced-motion/.test(css));
+  assert.ok(/idle-smoke/.test(css));
+  assert.ok(/touch-action:\s*none/.test(css));
+});
+
+function boardState(grade, focus) {
+  var state = PQStorage.defaultState();
+  state.petName = 'Clover';
+  state.courses.grade = grade;
+  state.courses.rank = PQStorage.rankFromGrade(grade);
+  state.courses.lessonFocus = focus || {
+    addition: false,
+    subtraction: false,
+    multiplication: true,
+    reading: false
+  };
+  return state;
+}
+
+test('four in a row rules, gentle retry, and rank-scaled play', function () {
+  var easy = PQBoards.aiSkill(1);
+  var hard = PQBoards.aiSkill(5);
+  assert.ok(easy.takeWin < hard.takeWin);
+  assert.ok(easy.block < PQBoards.aiSkill(3).block);
+  assert.ok(hard.noise > 0);
+  var board = PQBoards.makeBoard();
+  PQBoards.dropOn(board, 1, 2);
+  PQBoards.dropOn(board, 2, 2);
+  PQBoards.dropOn(board, 3, 2);
+  var scoutCol = PQBoards.aiChoose(board, 1, scripted([0.9, 0, 0, 0.2]));
+  var champCol = PQBoards.aiChoose(board, 5, scripted([0.9, 0, 0, 0.2]));
+  assert.notStrictEqual(scoutCol, 0);
+  assert.strictEqual(champCol, 0);
+  assert.strictEqual(PQBoards.aiChoose(board, 1, scripted([0.1, 0, 0, 0])), 0);
+  var line = PQBoards.makeBoard();
+  PQBoards.dropOn(line, 0, 1);
+  PQBoards.dropOn(line, 0, 1);
+  PQBoards.dropOn(line, 0, 1);
+  assert.strictEqual(PQBoards.winnerOf(line), null);
+  PQBoards.dropOn(line, 0, 1);
+  assert.strictEqual(PQBoards.winnerOf(line), 1);
+
+  var state = boardState(1);
+  var game = PQBoards.create('four', state, lcg(3));
+  assert.strictEqual(game.prompt.type, 'mul');
+  assert.ok(game.prompt.b <= 5);
+  var before = JSON.stringify(game.board);
+  var miss = PQBoards.answer(game, '0', lcg(1), state);
+  assert.strictEqual(miss.ok, false);
+  assert.ok(miss.hint && miss.hint.length > 0);
+  assert.ok(!/wrong|fail|lose|shame/i.test(miss.message + miss.hint));
+  assert.strictEqual(JSON.stringify(game.board), before);
+  assert.strictEqual(game.armed, false);
+  var yes = PQBoards.answer(game, String(game.prompt.answer), lcg(1), state);
+  assert.strictEqual(yes.ok, true);
+  assert.strictEqual(game.armed, true);
+  var early = PQBoards.dropFour(game, 3, lcg(4), state);
+  assert.strictEqual(early.ok, true);
+  assert.strictEqual(game.board[5][3], 1);
+  var blocked = PQBoards.dropFour(game, 3, lcg(4), state);
+  assert.strictEqual(blocked.ok, false);
+  assert.ok(/answer first/i.test(blocked.hint));
+
+  var scoutMax = 0;
+  var champMax = 0;
+  var i;
+  for (i = 0; i < 25; i++) {
+    var scout = PQBoards.create('four', boardState(1), lcg(10 + i));
+    var champ = PQBoards.create('four', boardState(5), lcg(40 + i));
+    scoutMax = Math.max(scoutMax, scout.prompt.answer);
+    champMax = Math.max(champMax, champ.prompt.answer);
+    assert.ok([1, 2, 5, 10].indexOf(scout.prompt.a) !== -1);
+    assert.ok(scout.prompt.b <= 5);
+  }
+  assert.ok(champMax > scoutMax);
+
+  var weak = boardState(5);
+  weak.courses.tables = [7];
+  weak.factStats = {
+    '2×7': { attempts: 8, correct: 8 },
+    '4×7': { attempts: 8, correct: 1 }
+  };
+  weak.tableStats = { '7': { attempts: 8, correct: 2 } };
+  var twos = 0;
+  var fours = 0;
+  for (i = 0; i < 80; i++) {
+    var fact = PQBoards.makePrompt(weak, lcg(100 + i), false);
+    if (fact.b === 2) twos += 1;
+    if (fact.b === 4) fours += 1;
+  }
+  assert.ok(fours > twos, 'fours ' + fours + ' twos ' + twos);
+
+  var addOnly = boardState(2, {
+    addition: true,
+    subtraction: false,
+    multiplication: false,
+    reading: false
+  });
+  var added = PQBoards.create('four', addOnly, lcg(2));
+  assert.strictEqual(added.prompt.type, 'add');
+  var counts = { mul: 0, add: 0, sub: 0, read: 0 };
+  var mix = {
+    addition: true,
+    subtraction: true,
+    multiplication: true,
+    reading: true
+  };
+  for (i = 0; i < 200; i++) {
+    var kind = PQBoards.pickKind(mix, lcg(i + 3), false);
+    counts[kind] += 1;
+  }
+  assert.ok(counts.mul > counts.add);
+  assert.ok(counts.mul > counts.sub);
+  assert.strictEqual(counts.read, 0);
+});
+
+test('pet race home moves by the answer, bumps kindly, and she finishes', function () {
+  assert.strictEqual(PQBoards.stepsFromAnswer(12, 12), 2);
+  assert.strictEqual(PQBoards.stepsFromAnswer(3 * 4, 12), 2);
+  assert.strictEqual(PQBoards.stepsFromAnswer(10, 12), 5);
+  assert.strictEqual(PQBoards.stepsFromAnswer(0, 12), 1);
+  assert.strictEqual(PQBoards.petStep(1, scripted([0.99])), 1);
+  assert.ok(PQBoards.petStep(5, scripted([0.9])) >= 1);
+  var state = boardState(2, {
+    addition: true,
+    subtraction: false,
+    multiplication: true,
+    reading: true
+  });
+  var game = PQBoards.create('race', state, lcg(5));
+  var start = game.pawns.kid;
+  var miss = PQBoards.answer(game, 'nope', lcg(1), state);
+  assert.strictEqual(miss.ok, false);
+  assert.ok(miss.hint);
+  assert.strictEqual(game.pawns.kid, start);
+  assert.ok(!/wrong|fail|lose|shame|wager|bet/i.test(miss.message + ' ' + miss.hint));
+  game.pawns.kid = 3;
+  game.pawns.pet = 5;
+  game.prompt = { type: 'mul', prompt: '1 × 2', answer: 2, a: 1, b: 2, task: { type: 'mul', a: 1, b: 2, answer: 2 } };
+  var bumped = PQBoards.answer(game, '2', scripted([0.1]), state);
+  assert.strictEqual(bumped.ok, true);
+  assert.ok(/den for a nap/i.test(bumped.message));
+  assert.strictEqual(game.pawns.pet, null);
+  assert.ok(!/shame|wrong|fail/i.test(bumped.message));
+
+  var near = PQBoards.create('race', state, lcg(6));
+  near.pawns.pet = near.home - 1;
+  near.pawns.kid = 0;
+  near.kidMoves = 0;
+  near.prompt = { type: 'mul', prompt: '2 × 2', answer: 4, a: 2, b: 2, task: { type: 'mul', a: 2, b: 2, answer: 4 } };
+  var petHome = PQBoards.answer(near, '4', scripted([0.1]), state);
+  assert.strictEqual(petHome.done, false);
+  assert.notStrictEqual(near.finished, true);
+
+  var escort = PQBoards.create('race', state, lcg(7));
+  escort.kidMoves = 13;
+  escort.pawns.kid = 2;
+  escort.pawns.pet = null;
+  escort.prompt = { type: 'mul', prompt: '2 × 2', answer: 4, a: 2, b: 2, task: { type: 'mul', a: 2, b: 2, answer: 4 } };
+  var done = PQBoards.answer(escort, '4', scripted([0.2]), state);
+  assert.strictEqual(done.done, true);
+  assert.strictEqual(escort.winner, 'kid');
+  assert.strictEqual(escort.pawns.kid, escort.home);
+  assert.ok(/home/i.test(done.message));
+  assert.ok(!/shame|wrong|fail|wager|bet/i.test(done.message));
+
+  var easyWords = 0;
+  var richWords = 0;
+  PQBoards.readBank(1).forEach(function (row) { easyWords += row.q.split(/\s+/).length; });
+  PQBoards.readBank(5).forEach(function (row) { richWords += row.q.split(/\s+/).length; });
+  assert.ok(richWords / PQBoards.readBank(5).length > easyWords / PQBoards.readBank(1).length);
+  var readCounts = { mul: 0, add: 0, sub: 0, read: 0 };
+  var i;
+  for (i = 0; i < 240; i++) {
+    readCounts[PQBoards.pickKind({
+      addition: true,
+      subtraction: true,
+      multiplication: true,
+      reading: true
+    }, lcg(i + 9), true)] += 1;
+  }
+  assert.ok(readCounts.read > 0);
+  assert.ok(readCounts.mul > readCounts.read);
+});
+
+test('bingo, word match, and array builder scale with rank and stay kind', function () {
+  var fresh = PQStorage.defaultState();
+  assert.deepStrictEqual(PQBoards.forPlace(fresh, 'school'), []);
+  assert.deepStrictEqual(PQBoards.forPlace(fresh, 'parlor'), []);
+  assert.deepStrictEqual(PQBoards.forPlace(fresh, 'library'), []);
+  fresh.world.places = ['school', 'library'];
+  var schoolIds = PQBoards.forPlace(fresh, 'school').map(function (meta) { return meta.id; });
+  assert.ok(schoolIds.indexOf('four') !== -1);
+  assert.ok(schoolIds.indexOf('bingo') !== -1);
+  assert.ok(schoolIds.indexOf('array') !== -1);
+  assert.strictEqual(PQBoards.forPlace(fresh, 'parlor').length, 0);
+  assert.strictEqual(PQBoards.forPlace(fresh, 'library')[0].id, 'memory');
+  var listed = JSON.stringify(PQBoards.forPlace(fresh, 'school'));
+  assert.ok(listed.indexOf('locked') === -1);
+
+  var scoutBingo = PQBoards.create('bingo', boardState(1), lcg(4));
+  var champBingo = PQBoards.create('bingo', boardState(5), lcg(4));
+  scoutBingo.cells.forEach(function (cell) {
+    if (cell.free) return;
+    assert.ok([1, 2, 5, 10].indexOf(cell.a) !== -1, 'table ' + cell.a);
+    assert.ok(cell.b <= 5);
+  });
+  assert.ok(champBingo.hardest > scoutBingo.hardest);
+  var open = -1;
+  var c;
+  for (c = 0; c < scoutBingo.cells.length; c++) {
+    if (!scoutBingo.cells[c].free && scoutBingo.cells[c].answer === scoutBingo.prompt.answer) open = c;
+  }
+  assert.ok(open >= 0);
+  var wrongCell = open === 0 ? 1 : 0;
+  if (scoutBingo.cells[wrongCell].free || scoutBingo.cells[wrongCell].answer === scoutBingo.prompt.answer) {
+    wrongCell = 3;
+  }
+  var miss = PQBoards.tapBingo(scoutBingo, wrongCell, lcg(1), boardState(1));
+  assert.strictEqual(miss.ok, false);
+  assert.ok(miss.hint);
+  assert.strictEqual(scoutBingo.cells[wrongCell].marked, false);
+  assert.ok(!/wrong|fail|lose|shame/i.test(miss.message + miss.hint));
+  var marked = PQBoards.tapBingo(scoutBingo, open, lcg(2), boardState(1));
+  assert.strictEqual(marked.ok, true);
+  assert.strictEqual(scoutBingo.cells[open].marked, true);
+  scoutBingo.cells.forEach(function (cell) { cell.marked = true; });
+  scoutBingo.cells[0].marked = false;
+  scoutBingo.cells[0].free = false;
+  scoutBingo.prompt = { type: 'mul', prompt: '2 × 2', answer: scoutBingo.cells[0].answer, a: 2, b: 2, task: { type: 'mul', a: 2, b: 2, answer: scoutBingo.cells[0].answer } };
+  var line = PQBoards.tapBingo(scoutBingo, 0, lcg(1), boardState(1));
+  assert.strictEqual(line.done, true);
+  assert.ok(PQBoards.bingoLines(scoutBingo.cells) >= 1);
+
+  var scoutMem = PQBoards.create('memory', boardState(1), lcg(1));
+  var champMem = PQBoards.create('memory', boardState(5), lcg(1));
+  assert.strictEqual(scoutMem.cards.length, 6);
+  assert.strictEqual(champMem.cards.length, 12);
+  assert.ok(champMem.pairs > scoutMem.pairs);
+  var first = 0;
+  var second = 1;
+  while (second < scoutMem.cards.length && scoutMem.cards[second].pair === scoutMem.cards[first].pair) second += 1;
+  var flip = PQBoards.flipMemory(scoutMem, first);
+  assert.strictEqual(flip.ok, true);
+  var missPair = PQBoards.flipMemory(scoutMem, second);
+  assert.strictEqual(missPair.matched, false);
+  assert.strictEqual(missPair.needsContinue, true);
+  assert.ok(!/wrong|fail|lose|shame/i.test(missPair.message + missPair.hint));
+  PQBoards.memoryContinue(scoutMem);
+  assert.strictEqual(scoutMem.cards[first].up, false);
+  var pairIndex = -1;
+  for (c = 0; c < scoutMem.cards.length; c++) {
+    if (c !== first && scoutMem.cards[c].pair === scoutMem.cards[first].pair) pairIndex = c;
+  }
+  PQBoards.flipMemory(scoutMem, first);
+  var matched = PQBoards.flipMemory(scoutMem, pairIndex);
+  assert.strictEqual(matched.matched, true);
+  assert.strictEqual(scoutMem.cards[first].matched, true);
+
+  var scoutArray = PQBoards.create('array', boardState(1), scripted([0]));
+  var champArray = PQBoards.create('array', boardState(5), scripted([0]));
+  assert.ok(champArray.hardest > scoutArray.hardest);
+  assert.strictEqual(scoutArray.rows * scoutArray.cols, scoutArray.hardest);
+  var early = PQBoards.arrayAct(scoutArray, 'check');
+  assert.strictEqual(early.ok, false);
+  assert.ok(early.hint);
+  assert.deepStrictEqual(scoutArray.built, []);
+  assert.ok(!/wrong|fail|lose|shame/i.test(early.message + early.hint));
+  var dots;
+  var row;
+  for (row = 0; row < scoutArray.rows; row++) {
+    if (row > 0) {
+      var next = PQBoards.arrayAct(scoutArray, 'row');
+      assert.strictEqual(next.ok, true);
+    }
+    for (dots = 0; dots < scoutArray.cols; dots++) {
+      assert.strictEqual(PQBoards.arrayAct(scoutArray, 'dot').ok, true);
+    }
+  }
+  var built = scoutArray.built.slice();
+  var back = PQBoards.arrayAct(scoutArray, 'back');
+  assert.strictEqual(back.ok, true);
+  assert.ok(scoutArray.built[scoutArray.built.length - 1] >= built[built.length - 1] - 1);
+  PQBoards.arrayAct(scoutArray, 'dot');
+  var good = PQBoards.arrayAct(scoutArray, 'check');
+  assert.strictEqual(good.ok, true);
+  assert.strictEqual(good.done, true);
+
+  var win = PQBoards.reward(true);
+  var played = PQBoards.reward(false);
+  assert.ok(win.coins > 0 && played.coins > 0);
+  assert.ok(win.coins >= played.coins);
+  assert.strictEqual(win.mayDecor, true);
+  assert.strictEqual(played.mayDecor, false);
+  assert.ok(!/wager|bet|jackpot|shame|lose/i.test(win.message + played.message));
 });
 
 console.log('\n' + passed + ' passed, ' + failed + ' failed');

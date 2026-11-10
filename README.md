@@ -9,7 +9,8 @@ A phone-first practice game: short daily quests with a pet, and a town that star
 - **Times tables** for the tables a parent leaves on, spread across the week
 - A **coin bank** and a **general store**. Coins are gifts for playing. A wrong answer never takes coins away. The store opens after a quest. Buying means making the price with coins or answering a short money problem. Nothing costs real money.
 - **Short games** in places she has opened: baking, garden rows, pond numbers, market counting, ice cream orders, and more. They are extra, not a longer school day.
-- A **town** that begins with only her house. New places and things to place appear as she finishes quests and visits. Anything she has not earned stays hidden. Extra places are for exploring, not a longer school day.
+- **Board games** once a fitting place is open: Four in a Row and Pet Race Home (game hall, and also the schoolhouse or playground), times bingo and an array builder at school, and word match at the library. A wrong answer is a hint and another try. Coins are a gift for playing.
+- A **town** that begins with only her house. Each building looks like its own place. In a room she can drag things she has earned, or pick them from a wheel. Anything she has not earned stays hidden. A short note pops up when something happens, and **What happened** in the header keeps those notes.
 - A **daily gift**, a sticker for days she visits, and a weekly gift after 5 quests. A quiet day is okay. Nothing is taken away.
 
 Progress, pet nickname, and settings stay in **this device’s browser storage only**. There is no sign-in, no account, no ads, and no analytics.

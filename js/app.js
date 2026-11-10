@@ -39,6 +39,19 @@
   var shopCoins = [];
   var shopNote = '';
   var visitNote = '';
+  var toast = null;
+  var toastTimer = null;
+  var toastSerial = 0;
+  var wheelOpen = false;
+  var wheelList = false;
+  var wheelCat = null;
+  var wheelPage = 0;
+  var pickedId = null;
+  var drag = null;
+  var ignoreClick = false;
+  var board = null;
+  var boardEntry = '';
+  var logFrom = 'home';
 
   function $(sel) {
     return document.querySelector(sel);
@@ -53,8 +66,52 @@
     feedback = null;
     keypadValue = '';
     readingRevealed = false;
+    if (name !== 'house') {
+      wheelOpen = false;
+      pickedId = null;
+      drag = null;
+    }
+    if (name !== 'board') boardEntry = '';
     PQAudio.stopSpeak();
     render();
+  }
+
+  function queueToast(kind, message, hint) {
+    var text = String(message || '').trim();
+    var extra = String(hint || '').trim();
+    if (!text && !extra) return;
+    toastSerial += 1;
+    var serial = toastSerial;
+    toast = { kind: kind === 'gentle' ? 'gentle' : 'good', message: text, hint: extra };
+    PQWorld.pushLog(state, extra ? (text + ' ' + extra) : text);
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(function () {
+      if (serial !== toastSerial) return;
+      dismissToast();
+    }, extra ? 8000 : 4800);
+  }
+
+  function dismissToast() {
+    toast = null;
+    toastSerial += 1;
+    var el = document.querySelector('.toast-card');
+    if (el && el.parentNode) el.parentNode.removeChild(el);
+  }
+
+  function toastHtml() {
+    if (!toast) return '';
+    var speak = PQAudio.canSpeak()
+      ? '<button type="button" class="btn secondary" data-act="toast-speak">Read aloud</button>'
+      : '';
+    return (
+      '<div class="toast-card ' + (toast.kind === 'gentle' ? 'gentle' : 'good') + '" role="status">' +
+      '<p>' + esc(toast.message) + '</p>' +
+      (toast.hint ? '<p class="hint">' + esc(toast.hint) + '</p>' : '') +
+      '<div class="toast-actions">' +
+      speak +
+      '<button type="button" class="btn secondary" data-act="toast-close">Close</button>' +
+      '</div></div>'
+    );
   }
 
   function todayDone() {
@@ -108,9 +165,13 @@
     else if (screen === 'bank') renderBank(app);
     else if (screen === 'shop') renderShop(app);
     else if (screen === 'game') renderGame(app);
+    else if (screen === 'board') renderBoard(app);
     else if (screen === 'album') renderAlbum(app);
+    else if (screen === 'log') renderLog(app);
     else renderWelcome(app);
 
+    if (toast) app.insertAdjacentHTML('beforeend', toastHtml());
+    if (wheelOpen && screen === 'house') app.insertAdjacentHTML('beforeend', wheelHtml());
     bindGlobal();
   }
 
@@ -120,12 +181,15 @@
     var back = opts.back
       ? '<button type="button" class="icon-btn" data-act="back" aria-label="Back">←</button>'
       : '<span class="icon-btn spacer"></span>';
+    var logBtn =
+      '<button type="button" class="icon-btn log-btn" data-act="open-log" aria-label="What happened">★</button>';
     return (
       '<header class="topbar">' +
       back +
       '<h1 class="top-title">' +
       esc(title) +
       '</h1>' +
+      logBtn +
       '<button type="button" class="icon-btn sound-btn" data-act="toggle-sound" aria-label="' +
       soundLabel +
       '" aria-pressed="' +
@@ -480,47 +544,35 @@
     if (house.id === 'store') {
       gameBtn += '<button type="button" class="btn primary lg" data-act="open-shop">Shop the shelves</button>';
     }
-    var items = PQWorld.visibleItems(state);
-    var inventory = '';
-    if (items.length) {
-      var placedHere = {};
-      PQWorld.placementsFor(state, house.id).forEach(function (p) { placedHere[p.itemId] = true; });
-      var rows = items.map(function (item) {
-        if (placedHere[item.id]) {
-          return (
-            '<div class="item-block">' +
-            '<p class="item-name">' + esc(item.name) + ' is in this room</p>' +
-            '<div class="item-actions">' +
-            '<button type="button" class="btn secondary" data-act="play-item" data-item="' + item.id + '">Play</button>' +
-            '<button type="button" class="btn secondary" data-act="move-item" data-item="' + item.id + '">Move</button>' +
-            '<button type="button" class="btn secondary" data-act="return-item" data-item="' + item.id + '">Put back</button>' +
-            '</div></div>'
-          );
-        }
-        return '<button type="button" class="btn secondary" data-act="place-item" data-item="' + item.id + '">Place ' + esc(item.name) + '</button>';
-      }).join('');
-      inventory =
-        '<section class="inventory"><h2 class="section-title">Things you can place</h2>' +
-        '<p class="plain-note">Showing ' + items.length + (items.length === 1 ? ' thing' : ' things') + ' you have earned.</p>' +
-        rows + '</section>';
-    }
+    PQBoards.forPlace(state, house.id).forEach(function (meta) {
+      gameBtn += '<button type="button" class="btn primary lg" data-act="open-board" data-game="' +
+        meta.id + '">' + esc(meta.button) + '</button>';
+    });
     var petBit =
       house.id === 'pet' || house.id === 'friend'
         ? '<div class="pet-in-room">' +
           PQPets.renderPetSvg(state.petId, state.growthStage || 0, { label: name }) +
           '</div>'
         : '';
-    var feedbackHtml = roleplayNote
-      ? '<div class="feedback good" role="status"><p>' + esc(roleplayNote) + '</p></div>'
+    var pickHint = pickedId
+      ? '<p class="place-hint">Tap a spot in the room, or drag it. The tray puts it away.</p>'
+      : '';
+    var thingsBtn = PQWorld.wheelGroups(state).length
+      ? '<button type="button" class="wheel-fab" data-act="toggle-wheel" aria-label="Things you can place" aria-expanded="' +
+        (wheelOpen ? 'true' : 'false') + '">Things</button>'
       : '';
 
     app.innerHTML =
       headerBar(title, { back: true }) +
       '<main class="panel house">' +
-      '<div class="room-wrap">' +
-      PQWorld.renderRoomSvg(house.id, state) +
+      '<div class="room-stage" data-place="' + esc(house.id) + '">' +
+      PQWorld.renderRoomSvg(house.id, state, { bare: true }) +
+      placedItemsHtml(house.id) +
       petBit +
+      '<button type="button" class="put-away" data-act="put-away">Put away</button>' +
+      thingsBtn +
       '</div>' +
+      pickHint +
       '<p class="lede">' +
       esc(house.blurb) +
       '</p>' +
@@ -529,8 +581,6 @@
       '<div class="role-actions">' +
       buttons +
       '</div>' +
-      inventory +
-      feedbackHtml +
       '</main>';
   }
 
@@ -574,6 +624,7 @@
     app.innerHTML =
       headerBar(mission || 'Quest', { back: true }) +
       '<main class="panel quest">' +
+      hintStripHtml() +
       '<div class="quest-progress">' +
       '<div class="quest-progress-top"><span>Quest progress</span><span>' +
       (doneCount + 1) +
@@ -589,8 +640,20 @@
       '%"></i></div>' +
       '</div>' +
       body +
-      feedbackHtml(task) +
       '</main>';
+  }
+
+  function hintStripHtml() {
+    if (!feedback) return '';
+    var text = feedback.message || '';
+    if (feedback.fact) text += (text ? ' ' : '') + feedback.fact;
+    if (feedback.coins) text += ' +' + feedback.coins + (feedback.coins === 1 ? ' coin' : ' coins');
+    return (
+      '<div class="hint-strip ' + (feedback.kind === 'good' ? 'good' : 'gentle') + '" role="status">' +
+      '<p>' + esc(text) + '</p>' +
+      (feedback.hint ? '<p class="hint">' + esc(feedback.hint) + '</p>' : '') +
+      '</div>'
+    );
   }
 
   function feedbackHtml(task) {
@@ -915,9 +978,9 @@
     app.innerHTML =
       headerBar('Extra practice', { back: true }) +
       '<main class="panel quest">' +
+      hintStripHtml() +
       '<p class="lede center">Just for fun — this does not change today’s quest.</p>' +
       renderMathTask(task) +
-      feedbackHtml(state._practiceTask) +
       '</main>';
   }
 
@@ -1256,10 +1319,10 @@
       app.innerHTML =
         headerBar('General store', { back: true }) +
         '<main class="panel shop">' +
+        (shopNote ? '<div class="hint-strip good" role="status"><p>' + esc(shopNote) + '</p></div>' : '') +
         '<div class="room-wrap">' + PQWorld.renderRoomSvg('store', state) + '</div>' +
         '<p class="lede">You have ' + coins + ' coins. Pick something, then make the amount.</p>' +
         shelf +
-        (shopNote ? '<div class="feedback good" role="status"><p>' + esc(shopNote) + '</p></div>' : '') +
         '<button type="button" class="btn secondary" data-act="town">All done / back to town</button>' +
         '</main>';
       return;
@@ -1314,10 +1377,10 @@
     app.innerHTML =
       headerBar('Pay for it', { back: true }) +
       '<main class="panel shop">' +
+      (shopNote ? '<div class="hint-strip gentle" role="status"><p>' + esc(shopNote) + '</p></div>' : '') +
       '<p class="eyebrow">' + esc(item.name) + ' · ' + item.price + ' coins</p>' +
       '<p class="lede">Bank: ' + coins + ' coins</p>' +
       body +
-      (shopNote ? '<div class="feedback gentle big-feedback" role="status"><p class="mark-word">Not yet</p><p>' + esc(shopNote) + '</p></div>' : '') +
       '<button type="button" class="btn secondary" data-act="shop-back">Back to the shelves</button>' +
       '</main>';
   }
@@ -1332,11 +1395,8 @@
       app.innerHTML =
         headerBar(gameRound.title, { back: true }) +
         '<main class="panel">' +
+        '<div class="hint-strip good" role="status"><p>You finished. ' + gameRound.reward + ' coins go in the bank.</p></div>' +
         '<div class="room-wrap">' + PQWorld.renderRoomSvg(gameRound.place, state) + '</div>' +
-        '<div class="feedback good big-feedback" role="status">' +
-        '<p class="mark-word">All done</p>' +
-        '<p>You finished. ' + gameRound.reward + ' coins go in the bank.</p>' +
-        '</div>' +
         '<button type="button" class="btn primary lg" data-act="town">All done / back to town</button>' +
         '</main>';
       return;
@@ -1348,11 +1408,11 @@
     app.innerHTML =
       headerBar(gameRound.title, { back: true }) +
       '<main class="panel game">' +
+      (shopNote ? '<div class="hint-strip gentle" role="status"><p>' + esc(shopNote) + '</p></div>' : '') +
       '<div class="room-wrap room-compact">' + PQWorld.renderRoomSvg(gameRound.place, state) + '</div>' +
       (step.detail ? '<div class="recipe-card"><p>' + esc(step.detail) + '</p></div>' : '') +
       '<h2 class="question">' + esc(step.prompt) + '</h2>' +
       '<div class="choices">' + choices + '</div>' +
-      (shopNote ? '<div class="feedback gentle big-feedback" role="status"><p class="mark-word">Not yet</p><p>' + esc(shopNote) + '</p></div>' : '') +
       '<button type="button" class="btn secondary" data-act="town">All done / back to town</button>' +
       '</main>';
   }
@@ -1376,18 +1436,357 @@
 
   /* ---------- Actions ---------- */
 
+  function placedItemsHtml(placeId) {
+    var list = PQWorld.placementsFor(state, placeId);
+    return list.map(function (entry) {
+      var item = PQWorld.itemById(entry.itemId);
+      if (!item) return '';
+      var picked = pickedId === item.id ? ' is-picked' : '';
+      return '<button type="button" class="placed-item' + picked + '" data-item="' + item.id +
+        '" style="left:' + entry.x + '%;top:' + entry.y + '%" aria-label="' + esc(item.name) + '">' +
+        PQWorld.renderItemIcon(item) + '</button>';
+    }).join('');
+  }
+
+  function shortItemName(name) {
+    return String(name || '').replace(/^an?\s+/i, '');
+  }
+
+  function wheelHtml() {
+    var groups = PQWorld.wheelGroups(state);
+    if (!groups.length) return '';
+    if (wheelList) {
+      var blocks = groups.map(function (group) {
+        var buttons = group.items.map(function (item) {
+          return '<button type="button" class="btn secondary wheel-item" data-act="wheel-pick" data-item="' +
+            item.id + '">' + PQWorld.renderItemIcon(item) + '<span>' + esc(item.name) + '</span></button>';
+        }).join('');
+        return '<section class="wheel-group"><h3>' + esc(group.label) + ' · ' + group.count + '</h3>' + buttons + '</section>';
+      }).join('');
+      return '<div class="wheel-pop" role="dialog" aria-label="My items">' +
+        '<div class="wheel-top"><strong>My items</strong>' +
+        '<button type="button" class="btn secondary" data-act="wheel-mode">Wheel</button>' +
+        '<button type="button" class="btn ghost" data-act="wheel-close">Close</button></div>' +
+        '<div class="wheel-list">' + blocks + '</div></div>';
+    }
+    var source = null;
+    var i;
+    if (wheelCat) {
+      for (i = 0; i < groups.length; i++) if (groups[i].id === wheelCat) source = groups[i];
+    }
+    var entries = source ? source.items : groups;
+    var pageSize = 6;
+    var pages = Math.max(1, Math.ceil(entries.length / pageSize));
+    if (wheelPage >= pages) wheelPage = 0;
+    var slice = entries.slice(wheelPage * pageSize, wheelPage * pageSize + pageSize);
+    var spots = slice.map(function (entry, index) {
+      var angle = (-90 + (360 / slice.length) * index) * Math.PI / 180;
+      var left = 50 + Math.cos(angle) * 34;
+      var top = 48 + Math.sin(angle) * 34;
+      if (source) {
+        return '<button type="button" class="wheel-spot" style="left:' + left + '%;top:' + top + '%" data-act="wheel-pick" data-item="' +
+          entry.id + '">' + PQWorld.renderItemIcon(entry) + '<span>' + esc(shortItemName(entry.name)) + '</span></button>';
+      }
+      return '<button type="button" class="wheel-spot" style="left:' + left + '%;top:' + top + '%" data-act="wheel-cat" data-cat="' +
+        entry.id + '"><strong>' + esc(entry.label) + '</strong><em>' + entry.count + '</em></button>';
+    }).join('');
+    var more = pages > 1
+      ? '<button type="button" class="btn secondary" data-act="wheel-page">More</button>'
+      : '';
+    var center = source
+      ? '<button type="button" class="wheel-center" data-act="wheel-back">Groups</button>'
+      : '<button type="button" class="wheel-center" data-act="wheel-close">Close</button>';
+    var title = source ? source.label + ' · ' + source.count : 'Your things';
+    return '<div class="wheel-pop" role="dialog" aria-label="Things you can place">' +
+      '<div class="wheel-top"><strong>' + esc(title) + '</strong>' +
+      '<button type="button" class="btn secondary" data-act="wheel-mode">My items</button>' +
+      more + '</div>' +
+      '<div class="wheel-ring">' + spots + center + '</div></div>';
+  }
+
+  function renderLog(app) {
+    PQWorld.ensureWorld(state);
+    var rows = (state.world.log || []).map(function (entry) {
+      return '<li>' + esc(entry.text) + '</li>';
+    }).join('');
+    if (!rows) rows = '<li>Nothing new yet. Play a little and notes will show up here.</li>';
+    app.innerHTML =
+      headerBar('What happened', { back: true }) +
+      '<main class="panel">' +
+      '<ul class="soft-list log-list">' + rows + '</ul>' +
+      '<button type="button" class="btn secondary" data-act="back">Close</button>' +
+      '</main>';
+  }
+
+  function boardKeypad() {
+    var keys = ['1', '2', '3', '4', '5', '6', '7', '8', '9', 'Del', '0', 'Go'];
+    return '<div class="keypad" role="group" aria-label="Number keypad">' +
+      keys.map(function (k) {
+        var cls = 'key';
+        var act = 'board-key';
+        if (k === 'Del') cls += ' key-back';
+        else if (k === 'Go') { cls += ' key-go'; act = 'board-go'; }
+        return '<button type="button" class="' + cls + '" data-act="' + act + '" data-key="' + k + '">' + k + '</button>';
+      }).join('') + '</div>';
+  }
+
+  function boardPromptHtml() {
+    if (!board || !board.prompt || board.finished || board.done || board.armed) return '';
+    if (board.prompt.type === 'read') {
+      var choices = (board.prompt.choices || []).map(function (choice, i) {
+        return '<button type="button" class="choice-btn" data-act="board-choice" data-idx="' + i + '">' + esc(choice) + '</button>';
+      }).join('');
+      return '<h2 class="question">' + esc(board.prompt.prompt) + '</h2><div class="choices">' + choices + '</div>';
+    }
+    return '<div class="prompt" aria-live="polite">' + esc(board.prompt.prompt) + ' = ?</div>' +
+      '<div class="answer-display" aria-live="polite">' + (boardEntry || ' ') + '</div>' +
+      boardKeypad();
+  }
+
+  function renderFour() {
+    var cols = '';
+    var c;
+    var r;
+    for (c = 0; c < 7; c++) {
+      var cells = '';
+      for (r = 0; r < 6; r++) {
+        var owner = board.board[r][c];
+        var cls = owner === 1 ? ' p1' : (owner === 2 ? ' p2' : '');
+        cells += '<span class="four-cell' + cls + '"></span>';
+      }
+      cols += '<button type="button" class="four-col" data-act="four-drop" data-col="' + c + '" aria-label="Column ' + (c + 1) + '">' + cells + '</button>';
+    }
+    var ready = board.armed ? '<p class="place-hint">Tap a column to drop your disc.</p>' : '';
+    return '<div class="four-board" aria-label="Four in a Row">' + cols + '</div>' + ready + boardPromptHtml();
+  }
+
+  function renderRace() {
+    var spaces = '';
+    var i;
+    for (i = 0; i <= board.home; i++) {
+      var who = '';
+      if (board.pawns.kid === i) who += '<b class="pawn kid">You</b>';
+      if (board.pawns.pet === i) who += '<b class="pawn pet">Pet</b>';
+      var label = i === board.home ? 'Home' : (i === 0 ? 'Start' : String(i));
+      spaces += '<div class="race-space' + (i === board.home ? ' is-home' : '') + '"><span>' + label + '</span>' + who + '</div>';
+    }
+    var den = '';
+    if (board.pawns.kid == null) den += '<b class="pawn kid">You</b>';
+    if (board.pawns.pet == null) den += '<b class="pawn pet">Pet</b>';
+    return '<div class="race-den">Den ' + (den || '<span class="plain-note">empty</span>') + '</div>' +
+      '<div class="race-track">' + spaces + '</div>' +
+      boardPromptHtml();
+  }
+
+  function renderBingo() {
+    var cells = board.cells.map(function (cell, index) {
+      var cls = cell.free ? ' free' : (cell.marked ? ' marked' : '');
+      var label = cell.free ? 'Free' : String(cell.answer);
+      return '<button type="button" class="bingo-cell' + cls + '" data-act="bingo-tap" data-idx="' + index + '">' + esc(label) + '</button>';
+    }).join('');
+    var ask = board.prompt ? '<h2 class="question">' + esc(board.prompt.prompt) + '</h2>' : '';
+    return ask + '<div class="bingo-grid">' + cells + '</div>';
+  }
+
+  function renderMemory() {
+    var cards = board.cards.map(function (card, index) {
+      var up = card.up || card.matched;
+      return '<button type="button" class="memory-card' + (up ? ' up' : '') + (card.matched ? ' matched' : '') +
+        '" data-act="memory-flip" data-idx="' + index + '">' + (up ? esc(card.text) : '?') + '</button>';
+    }).join('');
+    var again = board.needsContinue
+      ? '<button type="button" class="btn secondary" data-act="memory-continue">Turn them back</button>'
+      : '';
+    return '<p class="lede">Match each word with its meaning.</p><div class="memory-grid">' + cards + '</div>' + again;
+  }
+
+  function renderArray() {
+    var rows = '';
+    var targetRows = board.rows;
+    var r;
+    for (r = 0; r < targetRows; r++) {
+      var count = board.built[r] || 0;
+      var dots = '';
+      var d;
+      for (d = 0; d < board.cols; d++) {
+        dots += '<i class="' + (d < count ? 'on' : '') + '"></i>';
+      }
+      rows += '<div class="array-row">' + dots + '</div>';
+    }
+    return '<h2 class="question">' + esc(board.prompt.prompt) + '</h2>' +
+      '<div class="array-build" aria-hidden="true">' + rows + '</div>' +
+      '<button type="button" class="btn primary lg" data-act="array-act" data-array="dot">Add a dot</button>' +
+      '<button type="button" class="btn secondary" data-act="array-act" data-array="row">Next row</button>' +
+      '<button type="button" class="btn secondary" data-act="array-act" data-array="back">Take one back</button>' +
+      '<button type="button" class="btn secondary" data-act="array-act" data-array="check">This is it</button>';
+  }
+
+  function renderBoard(app) {
+    if (!board) {
+      go(houseId ? 'house' : 'home');
+      return;
+    }
+    var body = '';
+    if (board.id === 'four') body = renderFour();
+    else if (board.id === 'race') body = renderRace();
+    else if (board.id === 'bingo') body = renderBingo();
+    else if (board.id === 'memory') body = renderMemory();
+    else if (board.id === 'array') body = renderArray();
+    var done = board.finished || board.done;
+    app.innerHTML =
+      headerBar(board.title, { back: true }) +
+      '<main class="panel game">' +
+      (board.banner ? '<div class="hint-strip good" role="status"><p>' + esc(board.banner) + '</p></div>' : '') +
+      body +
+      (done ? '<button type="button" class="btn primary lg" data-act="board-again">Play again</button>' : '') +
+      '<button type="button" class="btn secondary" data-act="back">All done / back</button>' +
+      '</main>';
+  }
+
+  function settleBoard(result) {
+    if (!board || !result) return;
+    var quiet = result.ok && !result.done && (
+      board.id === 'array' ||
+      board.id === 'bingo' ||
+      (board.id === 'memory' && !result.matched)
+    );
+    if (!result.ok) {
+      queueToast('gentle', result.message || 'Not yet.', result.hint || '');
+      PQAudio.play('gentle', state.soundOn);
+    } else if (result.done && !board.rewarded) {
+      var kidWon = result.winner !== 2 && result.winner !== 'draw';
+      var prize = PQBoards.reward(kidWon);
+      PQBank.addCoins(state, prize.coins);
+      var extra = '';
+      if (prize.mayDecor && Math.random() < 0.45) {
+        var item = PQWorld.grantDecor(state, Math.random);
+        if (item) extra = ' You found ' + item.name + ' to place.';
+      }
+      board.rewarded = true;
+      board.banner = (result.message || 'Nice work.') + ' ' + prize.message + extra;
+      queueToast('good', board.banner, '');
+      PQAudio.play('celebrate', state.soundOn);
+    } else if (!quiet && result.message) {
+      queueToast('good', result.message, '');
+      PQAudio.play('correct', state.soundOn);
+    } else if (result.ok) {
+      PQAudio.play('tap', state.soundOn);
+    }
+    save();
+    render();
+  }
+
+  function overTray(stage, clientX, clientY) {
+    if (!stage) return false;
+    var tray = stage.querySelector('.put-away');
+    if (!tray) return false;
+    var rect = tray.getBoundingClientRect();
+    return clientX >= rect.left && clientX <= rect.right && clientY >= rect.top && clientY <= rect.bottom;
+  }
+
+  function pointInStage(stage, clientX, clientY) {
+    var rect = stage.getBoundingClientRect();
+    return {
+      x: ((clientX - rect.left) / rect.width) * 100,
+      y: ((clientY - rect.top) / rect.height) * 100
+    };
+  }
+
   function bindGlobal() {
     var app = $('#app');
     if (!app || app._bound) return;
     app._bound = true;
     app.addEventListener('click', onClick);
+    app.addEventListener('pointerdown', onPointerDown, { passive: false });
+    app.addEventListener('pointermove', onPointerMove, { passive: false });
+    app.addEventListener('pointerup', onPointerUp);
+    app.addEventListener('pointercancel', onPointerUp);
+  }
+
+  function onPointerDown(e) {
+    var stage = e.target.closest ? e.target.closest('.room-stage') : null;
+    if (!stage || screen !== 'house') return;
+    var item = e.target.closest ? e.target.closest('.placed-item') : null;
+    if (item) {
+      e.preventDefault();
+      drag = {
+        id: item.getAttribute('data-item'),
+        pid: e.pointerId,
+        stage: stage,
+        startX: e.clientX,
+        startY: e.clientY,
+        moved: false
+      };
+      try { item.setPointerCapture(e.pointerId); } catch (err) { /* ignore */ }
+      return;
+    }
+    if (!pickedId) return;
+    if (e.target.closest && e.target.closest('button')) return;
+    e.preventDefault();
+    if (overTray(stage, e.clientX, e.clientY)) {
+      PQWorld.returnItem(state, houseId, pickedId);
+      queueToast('good', 'You put it away. It is still yours.', '');
+      pickedId = null;
+      save();
+      render();
+      return;
+    }
+    var spot = pointInStage(stage, e.clientX, e.clientY);
+    PQWorld.setItemPosition(state, houseId, pickedId, spot.x, spot.y);
+    pickedId = null;
+    save();
+    render();
+  }
+
+  function onPointerMove(e) {
+    if (!drag || e.pointerId !== drag.pid) return;
+    var dx = e.clientX - drag.startX;
+    var dy = e.clientY - drag.startY;
+    if (!drag.moved && (dx * dx + dy * dy) < 64) return;
+    drag.moved = true;
+    e.preventDefault();
+    var el = drag.stage.querySelector('.placed-item[data-item="' + drag.id + '"]');
+    if (!el) return;
+    var spot = pointInStage(drag.stage, e.clientX, e.clientY);
+    el.style.left = spot.x + '%';
+    el.style.top = spot.y + '%';
+    el.classList.add('is-dragging');
+    var tray = drag.stage.querySelector('.put-away');
+    if (tray) tray.classList.toggle('is-hot', overTray(drag.stage, e.clientX, e.clientY));
+  }
+
+  function onPointerUp(e) {
+    if (!drag || (e.pointerId != null && e.pointerId !== drag.pid)) return;
+    var info = drag;
+    drag = null;
+    if (!info.moved) {
+      pickedId = pickedId === info.id ? null : info.id;
+      render();
+      return;
+    }
+    ignoreClick = true;
+    setTimeout(function () { ignoreClick = false; }, 350);
+    if (overTray(info.stage, e.clientX, e.clientY)) {
+      PQWorld.returnItem(state, houseId, info.id);
+      pickedId = null;
+      queueToast('good', 'You put it away. It is still yours.', '');
+      save();
+      render();
+      return;
+    }
+    var spot = pointInStage(info.stage, e.clientX, e.clientY);
+    PQWorld.setItemPosition(state, houseId, info.id, spot.x, spot.y);
+    pickedId = null;
+    save();
+    render();
   }
 
   function onClick(e) {
+    if (ignoreClick) return;
     var t = e.target.closest('[data-act]');
     if (!t) return;
     var act = t.getAttribute('data-act');
-    PQAudio.play('tap', state.soundOn);
+    if (act !== 'toast-close' && act !== 'toast-speak') PQAudio.play('tap', state.soundOn);
 
     if (act === 'toggle-sound') {
       state.soundOn = !state.soundOn;
@@ -1395,7 +1794,173 @@
       render();
       return;
     }
+    if (act === 'toast-close') {
+      dismissToast();
+      return;
+    }
+    if (act === 'toast-speak') {
+      if (toast) {
+        var spoken = toast.message + (toast.hint ? '. ' + toast.hint : '');
+        PQAudio.speak(spoken, true);
+      }
+      return;
+    }
+    if (act === 'open-log') {
+      logFrom = screen === 'log' ? 'home' : screen;
+      go('log');
+      return;
+    }
+    if (act === 'toggle-wheel') {
+      wheelOpen = !wheelOpen;
+      wheelList = false;
+      wheelCat = null;
+      wheelPage = 0;
+      render();
+      return;
+    }
+    if (act === 'wheel-close') {
+      wheelOpen = false;
+      wheelCat = null;
+      render();
+      return;
+    }
+    if (act === 'wheel-mode') {
+      wheelList = !wheelList;
+      wheelCat = null;
+      wheelPage = 0;
+      render();
+      return;
+    }
+    if (act === 'wheel-back') {
+      wheelCat = null;
+      wheelPage = 0;
+      render();
+      return;
+    }
+    if (act === 'wheel-page') {
+      wheelPage += 1;
+      render();
+      return;
+    }
+    if (act === 'wheel-cat') {
+      wheelCat = t.getAttribute('data-cat');
+      wheelPage = 0;
+      render();
+      return;
+    }
+    if (act === 'wheel-pick') {
+      var picked = PQWorld.placeItem(state, houseId, t.getAttribute('data-item'));
+      wheelOpen = false;
+      wheelCat = null;
+      if (!picked) {
+        queueToast('gentle', 'This room is full. Drag something to Put away first.', '');
+      } else {
+        pickedId = picked.itemId;
+        queueToast('good', 'It is in the room. Drag it, or tap it and then tap a spot.', '');
+      }
+      save();
+      render();
+      return;
+    }
+    if (act === 'put-away') {
+      if (!pickedId) {
+        queueToast('good', 'Drag something here, or tap it first.', '');
+        render();
+        return;
+      }
+      PQWorld.returnItem(state, houseId, pickedId);
+      pickedId = null;
+      queueToast('good', 'You put it away. It is still yours.', '');
+      save();
+      render();
+      return;
+    }
+    if (act === 'open-house' || act === 'open-board' || act === 'open-game' || act === 'open-activity' || act === 'open-solitaire' || act === 'open-shop') {
+      dismissToast();
+    }
+    if (act === 'open-board') {
+      var gameId = t.getAttribute('data-game');
+      var allowed = PQBoards.forPlace(state, houseId);
+      var meta = null;
+      var gi;
+      for (gi = 0; gi < allowed.length; gi++) if (allowed[gi].id === gameId) meta = allowed[gi];
+      if (!meta) return;
+      board = PQBoards.create(gameId, state, Math.random);
+      boardEntry = '';
+      if (!board) return;
+      go('board');
+      return;
+    }
+    if (act === 'board-again') {
+      if (!board) return;
+      var againId = board.id;
+      board = PQBoards.create(againId, state, Math.random);
+      boardEntry = '';
+      go('board');
+      return;
+    }
+    if (act === 'board-key') {
+      var key = t.getAttribute('data-key');
+      if (key === 'Del') boardEntry = boardEntry.slice(0, -1);
+      else if (boardEntry.length < 4) boardEntry += key;
+      render();
+      return;
+    }
+    if (act === 'board-go') {
+      if (!board) return;
+      if (boardEntry === '') {
+        queueToast('gentle', 'Type an answer, then tap Go.', '');
+        render();
+        return;
+      }
+      var typed = boardEntry;
+      boardEntry = '';
+      settleBoard(PQBoards.answer(board, typed, Math.random, state));
+      return;
+    }
+    if (act === 'board-choice') {
+      if (!board) return;
+      settleBoard(PQBoards.answer(board, t.getAttribute('data-idx'), Math.random, state));
+      return;
+    }
+    if (act === 'four-drop') {
+      if (!board) return;
+      settleBoard(PQBoards.dropFour(board, parseInt(t.getAttribute('data-col'), 10), Math.random, state));
+      return;
+    }
+    if (act === 'bingo-tap') {
+      if (!board) return;
+      settleBoard(PQBoards.tapBingo(board, parseInt(t.getAttribute('data-idx'), 10), Math.random, state));
+      return;
+    }
+    if (act === 'memory-flip') {
+      if (!board) return;
+      settleBoard(PQBoards.flipMemory(board, parseInt(t.getAttribute('data-idx'), 10)));
+      return;
+    }
+    if (act === 'memory-continue') {
+      if (!board) return;
+      PQBoards.memoryContinue(board);
+      render();
+      return;
+    }
+    if (act === 'array-act') {
+      if (!board) return;
+      settleBoard(PQBoards.arrayAct(board, t.getAttribute('data-array')));
+      return;
+    }
     if (act === 'back') {
+      if (screen === 'log') {
+        var backTo = logFrom && logFrom !== 'log' ? logFrom : 'home';
+        go(backTo);
+        return;
+      }
+      if (screen === 'board') {
+        board = null;
+        boardEntry = '';
+        go(houseId ? 'house' : 'home');
+        return;
+      }
       if (screen === 'nickname') {
         go('pick-pet');
         return;
@@ -1674,13 +2239,17 @@
       });
       roleplayStep += 1;
       roleplayNote = played.message;
+      queueToast(played.prize ? 'good' : 'good', played.message, '');
       if (played.opened && played.opened.length) {
         freshPlace = played.opened[0];
         neighborhoodNote = played.opened[0].openLine;
       }
       if (chosen && chosen.play) {
         var playedSurprise = applySurprise(PQWorld.tryPlaySurprise(state, PQStorage.localDateKey(), Math.random));
-        if (playedSurprise) roleplayNote = played.message + ' ' + playedSurprise;
+        if (playedSurprise) {
+          roleplayNote = played.message + ' ' + playedSurprise;
+          queueToast('good', playedSurprise, '');
+        }
       }
       PQAudio.play(played.prize ? 'party' : 'correct', state.soundOn);
       save();
@@ -1719,6 +2288,7 @@
     if (act === 'open-gift') {
       var gift = PQDays.openGift(state, PQStorage.localDateKey());
       neighborhoodNote = gift.message;
+      queueToast('good', gift.message, '');
       PQAudio.play('celebrate', state.soundOn);
       save();
       go('home');
@@ -1731,6 +2301,7 @@
         state.growthStage = PQQuest.stageFromPoints(state.growthPoints);
       }
       neighborhoodNote = hello.message;
+      queueToast('good', hello.message, '');
       PQAudio.play('soft', state.soundOn);
       save();
       render();
@@ -1740,6 +2311,7 @@
       var weekNow = PQStorage.weeklyProgress(state);
       var claimed = PQDays.claimWeekly(state, weekNow.weekKey, weekNow.met);
       neighborhoodNote = claimed.message;
+      queueToast('good', claimed.message, '');
       if (claimed.coins) PQAudio.play('celebrate', state.soundOn);
       save();
       go('home');
@@ -1748,6 +2320,7 @@
     if (act === 'play-item') {
       roleplayNote = applySurprise(PQWorld.tryPlaySurprise(state, PQStorage.localDateKey(), Math.random)) ||
         'You play together. It feels nice.';
+      queueToast('good', roleplayNote, '');
       PQAudio.play('soft', state.soundOn);
       save();
       render();
@@ -1769,11 +2342,13 @@
         PQBank.addCoins(state, gameRound.reward || 8);
         PQAudio.play('celebrate', state.soundOn);
         shopNote = '';
+        queueToast('good', 'You finished. ' + (gameRound.reward || 8) + ' coins go in the bank.', '');
       } else if (gameResult.ok) {
         shopNote = '';
         PQAudio.play('correct', state.soundOn);
       } else {
         shopNote = gameResult.hint || gameResult.message;
+        queueToast('gentle', gameResult.message || 'Not yet.', gameResult.hint || '');
         PQAudio.play('gentle', state.soundOn);
       }
       save();
@@ -1821,9 +2396,11 @@
         shopItemId = null;
         shopProblem = null;
         shopCoins = [];
+        queueToast('good', bought.message, '');
         PQAudio.play('celebrate', state.soundOn);
       } else {
         shopNote = bought.hint;
+        queueToast('gentle', 'Not yet.', bought.hint || '');
         PQAudio.play('gentle', state.soundOn);
       }
       save();
@@ -1942,6 +2519,10 @@
         partyNote = '';
         cardDeck = null;
         bookIndex = 0;
+        board = null;
+        pickedId = null;
+        wheelOpen = false;
+        toast = null;
         go('welcome');
       }
       return;
@@ -2103,6 +2684,7 @@
       PQBank.addCoins(state, 1);
       PQAudio.play('correct', state.soundOn);
       feedback = { kind: 'good', message: result.message, coins: 1 };
+      queueToast('good', result.message + ' +1 coin.', '');
       save();
       setTimeout(function () {
         advanceTask();
@@ -2114,6 +2696,7 @@
     PQBank.noteMistake(state);
     PQAudio.play('gentle', state.soundOn);
     feedback = { kind: 'gentle', message: result.message, hint: result.hint };
+    queueToast('gentle', result.message, result.hint);
     if (result.reveal) readingRevealed = true;
     save();
     render();
@@ -2147,6 +2730,7 @@
       PQBank.addCoins(state, gain);
       PQAudio.play('correct', state.soundOn);
       feedback = { kind: 'good', message: result.message, fact: result.fact, coins: gain };
+      queueToast('good', result.message + (result.fact ? ' ' + result.fact : '') + ' +' + gain + (gain === 1 ? ' coin.' : ' coins.'), '');
       keypadValue = '';
       save();
       if (screen === 'practice') {
@@ -2170,6 +2754,7 @@
     PQBank.noteMistake(state);
     PQAudio.play('gentle', state.soundOn);
     feedback = { kind: 'gentle', message: result.message, hint: result.hint };
+    queueToast('gentle', result.message, result.hint);
     keypadValue = '';
     // Record a single incorrect attempt on the first miss only
     if (task.missCount === 1) {
@@ -2453,6 +3038,10 @@
     var openedPlaces = PQWorld.noteQuestFinished(state, PQStorage.localDateKey());
     freshPlace = openedPlaces && openedPlaces.length ? openedPlaces[0] : freshPlace;
     if (freshPlace) neighborhoodNote = freshPlace.openLine;
+    var questNews = 'Quest complete. 12 coins go in the bank.';
+    if (freshUnlock && freshUnlock.line) questNews += ' ' + freshUnlock.line;
+    if (freshPlace && freshPlace.openLine) questNews += ' ' + freshPlace.openLine;
+    queueToast('good', questNews, '');
     PQParty.offerParty(state, PQStorage.localDateKey());
     questFocus = null;
     partyNote = '';
