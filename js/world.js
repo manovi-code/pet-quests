@@ -702,6 +702,7 @@
     if (!world.placements || typeof world.placements !== 'object' || Array.isArray(world.placements)) {
       world.placements = {};
     }
+    if (!Array.isArray(world.log)) world.log = [];
     if (!world.solitaire || typeof world.solitaire !== 'object' || Array.isArray(world.solitaire)) {
       world.solitaire = { dateKey: null, deals: 0 };
     }
@@ -1056,10 +1057,48 @@
     return null;
   }
 
+  function coordsFromSlot(slotIndex) {
+    var slot = SLOTS[slotIndex] || SLOTS[0];
+    var x = Math.round((slot.x / 320) * 100);
+    var y = Math.round((slot.y / 210) * 100);
+    if (x < 14) x = 14;
+    if (x > 86) x = 86;
+    if (y < 22) y = 22;
+    if (y > 64) y = 64;
+    return { x: x, y: y };
+  }
+
+  function clampPct(n, min, max) {
+    n = Number(n);
+    if (!isFinite(n)) return Math.round((min + max) / 2);
+    if (n < min) return min;
+    if (n > max) return max;
+    return Math.round(n);
+  }
+
   function placementsFor(state, placeId) {
     var world = ensureWorld(state);
     if (!Array.isArray(world.placements[placeId])) world.placements[placeId] = [];
-    return world.placements[placeId];
+    var list = world.placements[placeId];
+    var i;
+    for (i = 0; i < list.length; i++) {
+      if (!list[i]) continue;
+      if (list[i].x == null || list[i].y == null) {
+        var coords = coordsFromSlot(list[i].slot || 0);
+        list[i].x = coords.x;
+        list[i].y = coords.y;
+      }
+    }
+    return list;
+  }
+
+  function pushLog(state, text) {
+    var world = ensureWorld(state);
+    var line = String(text || '').replace(/\s+/g, ' ').trim();
+    if (!line) return world.log;
+    world.log.unshift({ text: line, at: Date.now() });
+    if (world.log.length > 40) world.log.length = 40;
+    return world.log;
   }
 
   function clearItem(world, itemId) {
@@ -1092,7 +1131,8 @@
       if (!used[i]) { slot = i; break; }
     }
     if (slot === -1) return null;
-    var entry = { itemId: itemId, slot: slot };
+    var coords = coordsFromSlot(slot);
+    var entry = { itemId: itemId, slot: slot, x: coords.x, y: coords.y };
     list.push(entry);
     return entry;
   }
@@ -1114,6 +1154,9 @@
       var next = (found.slot + n) % SLOT_COUNT;
       if (!used[next]) {
         found.slot = next;
+        var coords = coordsFromSlot(next);
+        found.x = coords.x;
+        found.y = coords.y;
         return found;
       }
     }
@@ -1132,6 +1175,106 @@
     }
     world.placements[placeId] = next;
     return removed;
+  }
+
+  function setItemPosition(state, placeId, itemId, x, y) {
+    if (!isPlaceOpen(state, placeId) || !hasUnlock(state, itemId)) return null;
+    var list = placementsFor(state, placeId);
+    var i;
+    for (i = 0; i < list.length; i++) {
+      if (list[i] && list[i].itemId === itemId) {
+        list[i].x = clampPct(x, 10, 90);
+        list[i].y = clampPct(y, 16, 72);
+        return list[i];
+      }
+    }
+    return null;
+  }
+
+  var WHEEL_CATS = [
+    { id: 'cozy', label: 'Cozy' },
+    { id: 'lights', label: 'Lights' },
+    { id: 'plants', label: 'Plants' },
+    { id: 'toys', label: 'Toys' },
+    { id: 'pictures', label: 'Pictures' },
+    { id: 'home', label: 'Home' }
+  ];
+
+  var KIND_CATEGORY = {
+    rug: 'cozy',
+    cushion: 'cozy',
+    blanket: 'cozy',
+    cloth: 'cozy',
+    lamp: 'lights',
+    plant: 'plants',
+    flower: 'plants',
+    vase: 'plants',
+    toy: 'toys',
+    duck: 'toys',
+    cone: 'toys',
+    hose: 'toys',
+    badge: 'toys',
+    nest: 'toys',
+    poster: 'pictures',
+    frame: 'pictures',
+    clock: 'pictures',
+    book: 'pictures',
+    bowl: 'home',
+    bell: 'home',
+    mug: 'home',
+    basket: 'home',
+    chair: 'home'
+  };
+
+  function categoryFor(item) {
+    if (!item) return 'home';
+    return KIND_CATEGORY[item.kind] || 'home';
+  }
+
+  function wheelGroups(state) {
+    var items = visibleItems(state);
+    var buckets = {};
+    var i;
+    for (i = 0; i < WHEEL_CATS.length; i++) buckets[WHEEL_CATS[i].id] = [];
+    for (i = 0; i < items.length; i++) {
+      var cat = categoryFor(items[i]);
+      if (!buckets[cat]) buckets[cat] = [];
+      buckets[cat].push(items[i]);
+    }
+    var out = [];
+    for (i = 0; i < WHEEL_CATS.length; i++) {
+      var id = WHEEL_CATS[i].id;
+      if (!buckets[id] || !buckets[id].length) continue;
+      out.push({
+        id: id,
+        label: WHEEL_CATS[i].label,
+        count: buckets[id].length,
+        items: buckets[id]
+      });
+    }
+    return out;
+  }
+
+  function wheelText(state) {
+    return wheelGroups(state).map(function (group) {
+      return group.label + ' (' + group.count + ') ' + group.items.map(function (item) {
+        return item.name;
+      }).join(', ');
+    }).join(' | ');
+  }
+
+  /**
+   * A game can leave one decoration she has not found yet.
+   * Shop goods and closed places stay out of the pool.
+   */
+  function grantDecor(state, rng) {
+    rng = rng || Math.random;
+    var pool = surprisePool(state);
+    if (!pool.length) return null;
+    var item = pool[Math.floor(rng() * pool.length) % pool.length];
+    if (!item || hasUnlock(state, item.id)) return null;
+    ensureWorld(state).unlocks.push(item.id);
+    return item;
   }
 
   function actionsFor(house, state) {
@@ -1251,9 +1394,18 @@
     var i;
     for (i = 0; i < list.length; i++) {
       var item = itemById(list[i].itemId);
-      var slot = SLOTS[list[i].slot] || SLOTS[0];
       if (!item) continue;
-      out += '<g transform="translate(' + slot.x + ' ' + slot.y + ')">' + iconMarkup(item.kind, item.color) + '</g>';
+      var x;
+      var y;
+      if (list[i].x != null && list[i].y != null) {
+        x = (clampPct(list[i].x, 0, 100) / 100) * 320;
+        y = (clampPct(list[i].y, 0, 100) / 100) * 210;
+      } else {
+        var slot = SLOTS[list[i].slot] || SLOTS[0];
+        x = slot.x;
+        y = slot.y;
+      }
+      out += '<g transform="translate(' + x + ' ' + y + ')">' + iconMarkup(item.kind, item.color) + '</g>';
     }
     return out;
   }
@@ -1528,10 +1680,41 @@
       '<circle cx="138" cy="50" r="6" fill="#e8c84a"/>';
   }
 
-  function renderRoomSvg(houseId, state) {
+  function interiorIdle(id) {
+    var bits = '';
+    if (id === 'pet' || id === 'cottage' || id === 'bakery' || id === 'friend' || id === 'farm') {
+      bits += '<g class="idle-smoke"><circle cx="46" cy="30" r="4" fill="#fffaf0" opacity="0.85"/><circle cx="54" cy="20" r="3" fill="#fffaf0" opacity="0.6"/></g>';
+    }
+    if (id === 'library' || id === 'school' || id === 'store' || id === 'bookstore' || id === 'museum' || id === 'vet') {
+      bits += '<rect class="idle-glow" x="118" y="40" width="36" height="22" rx="3" fill="#f0e0a0" opacity="0.45"/>';
+    }
+    if (id === 'aquarium' || id === 'pond') {
+      bits += '<g class="idle-bubble"><circle cx="90" cy="70" r="3" fill="#fff" opacity="0.75"/><circle cx="210" cy="54" r="2" fill="#fff" opacity="0.6"/></g>';
+    }
+    if (id === 'art' || id === 'icecream' || id === 'toystore' || id === 'music') {
+      bits += '<g class="idle-spark"><circle cx="36" cy="28" r="2" fill="#e8c84a"/><circle cx="286" cy="36" r="2" fill="#fffaf0"/></g>';
+    }
+    if (id === 'firehouse' || id === 'parlor' || id === 'camp' || id === 'playground' || id === 'train') {
+      bits += '<g class="idle-flag"><polygon points="250,22 286,30 250,38" fill="#e8c84a"/></g>';
+    }
+    if (id === 'beach' || id === 'nature' || id === 'garden') {
+      bits += '<g class="idle-wave"><path d="M0 118 Q40 108 80 118 T160 118 T240 118 T320 118" fill="none" stroke="#fffaf0" stroke-width="3" opacity="0.8"/></g>';
+    }
+    return bits;
+  }
+
+  function renderItemIcon(item) {
+    if (!item) return '';
+    return '<svg viewBox="-20 -20 40 40" width="48" height="48" aria-hidden="true">' +
+      iconMarkup(item.kind, item.color) + '</svg>';
+  }
+
+  function renderRoomSvg(houseId, state, opts) {
+    opts = opts || {};
     var scene = sceneFor(houseId || 'pet');
+    var placed = opts.bare ? '' : renderPlaced(state, houseId);
     return '<svg class="room-svg" viewBox="0 0 320 210" width="100%" height="100%" aria-hidden="true">' +
-      scene + renderPlaced(state, houseId) + '</svg>';
+      scene + interiorIdle(houseId || 'pet') + placed + '</svg>';
   }
 
   function emblem(id, accent) {
@@ -1564,47 +1747,374 @@
     return '<circle cx="60" cy="52" r="5" fill="' + accent + '"/>';
   }
 
-  function renderHouseFront(id) {
-    var look = LOOKS[id] || LOOKS.pet;
+  function frontWrap(inner) {
+    return '<svg class="house-front" viewBox="0 0 120 90" width="100%" height="72" aria-hidden="true">' + inner + '</svg>';
+  }
+
+  function frontInner(id) {
+    if (id === 'library') {
+      return '<rect width="120" height="90" fill="#e7eef6"/>' +
+        '<rect y="72" width="120" height="18" fill="#d9c7ae"/>' +
+        '<polygon points="8,44 60,16 112,44" fill="#5f7a52"/>' +
+        '<rect x="16" y="44" width="88" height="30" fill="#f7f1e6"/>' +
+        '<rect x="22" y="44" width="7" height="30" fill="#fffaf0"/>' +
+        '<rect x="91" y="44" width="7" height="30" fill="#fffaf0"/>' +
+        '<rect class="idle-glow" x="38" y="50" width="16" height="16" fill="#f0e0a0"/>' +
+        '<rect class="idle-glow" x="66" y="50" width="16" height="16" fill="#f0e0a0" opacity="0.75"/>' +
+        '<rect x="50" y="54" width="20" height="20" fill="#6b5344"/>' +
+        '<rect x="34" y="26" width="5" height="12" fill="#c4784a"/>' +
+        '<rect x="41" y="22" width="5" height="16" fill="#e8c84a"/>' +
+        '<rect x="48" y="26" width="5" height="12" fill="#8eb4c9"/>' +
+        '<g class="idle-spark"><circle cx="18" cy="20" r="1.6" fill="#e8c84a"/><circle cx="102" cy="18" r="1.6" fill="#fff"/></g>';
+    }
+    if (id === 'school') {
+      return '<rect width="120" height="90" fill="#fff6e8"/>' +
+        '<rect y="70" width="120" height="20" fill="#8fa87a"/>' +
+        '<rect x="18" y="40" width="70" height="34" fill="#fffaf0" stroke="#c4784a" stroke-width="2"/>' +
+        '<polygon points="12,42 53,18 94,42" fill="#c4784a"/>' +
+        '<rect x="78" y="16" width="10" height="28" fill="#a35f38"/>' +
+        '<circle class="idle-glow" cx="83" cy="14" r="6" fill="#e8c84a"/>' +
+        '<rect x="30" y="48" width="18" height="12" fill="#3d4a38"/>' +
+        '<rect x="56" y="52" width="16" height="22" fill="#7a9a68"/>' +
+        '<g class="idle-flag"><polygon points="88,20 112,26 88,32" fill="#e8c84a"/></g>' +
+        '<rect x="86" y="20" width="2" height="24" fill="#5f7a52"/>';
+    }
     if (id === 'garden') {
-      return '<svg viewBox="0 0 120 90" width="100%" height="72" aria-hidden="true">' +
-        '<rect width="120" height="90" fill="#c5e4f5"/>' +
+      return '<rect width="120" height="90" fill="#c5e4f5"/>' +
         '<rect y="58" width="120" height="32" fill="#8fa87a"/>' +
-        '<circle cx="30" cy="62" r="8" fill="#d4564e"/>' +
-        '<circle cx="48" cy="54" r="9" fill="#e8c84a"/>' +
-        '<circle cx="66" cy="62" r="8" fill="#fffaf0"/>' +
-        '<circle cx="84" cy="56" r="7" fill="#c4784a"/>' +
-        '<rect x="96" y="48" width="6" height="22" fill="#5f7a52"/>' +
-        '<circle cx="99" cy="42" r="10" fill="#7a9a68"/>' +
-        '</svg>';
+        '<circle cx="28" cy="64" r="9" fill="#d4564e"/>' +
+        '<circle cx="46" cy="54" r="10" fill="#e8c84a"/>' +
+        '<circle cx="64" cy="64" r="8" fill="#fffaf0"/>' +
+        '<circle cx="80" cy="56" r="7" fill="#e07a5f"/>' +
+        '<rect x="96" y="46" width="6" height="24" fill="#5f7a52"/>' +
+        '<circle cx="99" cy="40" r="11" fill="#7a9a68"/>' +
+        '<g class="idle-spark"><circle cx="22" cy="28" r="2" fill="#e8c84a"/><circle cx="70" cy="24" r="1.5" fill="#fff"/></g>' +
+        '<g class="idle-wave"><path d="M8 78 H40" stroke="#c4a574" stroke-width="3"/></g>';
+    }
+    if (id === 'bakery') {
+      return '<rect width="120" height="90" fill="#fff1df"/>' +
+        '<rect y="68" width="120" height="22" fill="#e7c7a1"/>' +
+        '<rect x="16" y="36" width="78" height="36" fill="#fffaf0" stroke="#a35f38" stroke-width="2"/>' +
+        '<path d="M16 36 Q30 24 44 36 Q58 24 72 36 Q86 24 94 36" fill="#d4564e"/>' +
+        '<rect class="idle-glow" x="26" y="44" width="22" height="16" fill="#f0e0a0"/>' +
+        '<ellipse cx="40" cy="52" rx="8" ry="5" fill="#e8c49a"/>' +
+        '<rect x="58" y="48" width="18" height="24" fill="#c4784a"/>' +
+        '<rect x="86" y="18" width="8" height="20" fill="#a35f38"/>' +
+        '<g class="idle-smoke"><circle cx="90" cy="14" r="3" fill="#fff"/><circle cx="96" cy="8" r="2.4" fill="#fff" opacity="0.75"/></g>';
     }
     if (id === 'pond') {
-      return '<svg viewBox="0 0 120 90" width="100%" height="72" aria-hidden="true">' +
-        '<rect width="120" height="90" fill="#e7f3f6"/>' +
-        '<ellipse cx="60" cy="58" rx="46" ry="18" fill="#8eb4c9"/>' +
-        '<ellipse cx="46" cy="54" rx="12" ry="6" fill="#fffaf0"/>' +
-        '<circle cx="40" cy="50" r="3" fill="#e8c84a"/>' +
-        '<circle cx="92" cy="40" r="8" fill="#7a9a68"/>' +
-        '</svg>';
+      return '<rect width="120" height="90" fill="#e7f3f6"/>' +
+        '<ellipse cx="62" cy="58" rx="48" ry="20" fill="#8eb4c9"/>' +
+        '<g class="idle-wave"><ellipse cx="48" cy="54" rx="16" ry="6" fill="#fffaf0" opacity="0.85"/></g>' +
+        '<ellipse cx="40" cy="50" rx="10" ry="5" fill="#fffaf0"/>' +
+        '<circle cx="34" cy="48" r="2" fill="#e8c84a"/>' +
+        '<ellipse cx="78" cy="60" rx="8" ry="4" fill="#f0e0a0"/>' +
+        '<circle cx="96" cy="36" r="9" fill="#7a9a68"/>' +
+        '<rect x="18" y="40" width="4" height="22" fill="#5f7a52"/>' +
+        '<g class="idle-bubble"><circle cx="70" cy="46" r="2" fill="#fff"/></g>';
+    }
+    if (id === 'friend') {
+      return '<rect width="120" height="90" fill="#fff6ea"/>' +
+        '<rect y="66" width="120" height="24" fill="#e0c2a0"/>' +
+        '<ellipse cx="58" cy="58" rx="36" ry="22" fill="#e8a05a"/>' +
+        '<polygon points="30,48 42,28 52,48" fill="#e8a05a"/>' +
+        '<polygon points="48,46 60,24 74,48" fill="#c4784a"/>' +
+        '<circle cx="48" cy="56" r="2" fill="#2c241c"/>' +
+        '<circle cx="64" cy="56" r="2" fill="#2c241c"/>' +
+        '<ellipse cx="56" cy="64" rx="5" ry="3" fill="#fffaf0"/>' +
+        '<rect class="idle-glow" x="78" y="40" width="14" height="12" rx="3" fill="#f0e0a0"/>' +
+        '<g class="idle-flag"><polygon points="96,30 118,36 96,42" fill="#d4564e"/></g>' +
+        '<rect x="94" y="30" width="2" height="28" fill="#a35f38"/>';
+    }
+    if (id === 'farm') {
+      return '<rect width="120" height="90" fill="#f6e7c8"/>' +
+        '<rect y="68" width="120" height="22" fill="#8fa87a"/>' +
+        '<rect x="14" y="36" width="58" height="36" fill="#a35f38"/>' +
+        '<polygon points="10,38 43,12 76,38" fill="#7a3b32"/>' +
+        '<rect x="34" y="48" width="16" height="24" fill="#5f7a52"/>' +
+        '<rect x="74" y="28" width="16" height="44" rx="8" fill="#d7d2cc" stroke="#a35f38"/>' +
+        '<ellipse cx="100" cy="70" rx="12" ry="7" fill="#e8c84a"/>' +
+        '<g class="idle-smoke"><circle cx="40" cy="10" r="2.5" fill="#fff"/></g>';
+    }
+    if (id === 'market') {
+      return '<rect width="120" height="90" fill="#fff6ea"/>' +
+        '<rect y="64" width="120" height="26" fill="#e7c7a1"/>' +
+        '<path d="M8 40 Q28 22 48 40 L48 70 H8 Z" fill="#d4564e"/>' +
+        '<path d="M52 40 Q74 18 98 40 L98 70 H52 Z" fill="#e8c84a"/>' +
+        '<circle cx="22" cy="56" r="6" fill="#d4564e"/>' +
+        '<circle cx="36" cy="58" r="5" fill="#7a9a68"/>' +
+        '<rect x="64" y="50" width="22" height="14" fill="#c4784a"/>' +
+        '<g class="idle-spark"><circle cx="86" cy="28" r="2" fill="#fff"/><circle cx="18" cy="24" r="1.5" fill="#e8c84a"/></g>';
     }
     if (id === 'playground') {
-      return '<svg viewBox="0 0 120 90" width="100%" height="72" aria-hidden="true">' +
-        '<rect width="120" height="90" fill="#c5e4f5"/>' +
+      return '<rect width="120" height="90" fill="#c5e4f5"/>' +
         '<rect y="64" width="120" height="26" fill="#8fa87a"/>' +
-        '<rect x="24" y="30" width="6" height="40" fill="#a35f38"/>' +
-        '<rect x="52" y="30" width="6" height="40" fill="#a35f38"/>' +
-        '<rect x="34" y="46" width="16" height="6" fill="#c4784a"/>' +
-        '<polygon points="70,70 96,70 104,40 78,40" fill="#e07a5f"/>' +
-        '</svg>';
+        '<rect x="18" y="28" width="5" height="42" fill="#a35f38"/>' +
+        '<rect x="46" y="28" width="5" height="42" fill="#a35f38"/>' +
+        '<rect x="26" y="48" width="16" height="5" fill="#c4784a"/>' +
+        '<polygon points="62,72 92,72 104,36 74,36" fill="#e07a5f"/>' +
+        '<g class="idle-flag"><polygon points="46,18 68,24 46,30" fill="#e8c84a"/></g>' +
+        '<circle cx="100" cy="22" r="6" fill="#f0e0a0"/>';
     }
-    return '<svg viewBox="0 0 120 90" width="100%" height="72" aria-hidden="true">' +
-      '<rect x="16" y="36" width="88" height="46" rx="3" fill="' + look.wall + '" stroke="' + look.roof + '" stroke-width="3"/>' +
-      '<polygon points="10,40 60,12 110,40" fill="' + look.roof + '"/>' +
-      '<rect x="28" y="46" width="16" height="14" fill="#d7e6ef" stroke="' + look.accent + '"/>' +
-      '<rect x="76" y="46" width="16" height="14" fill="#d7e6ef" stroke="' + look.accent + '"/>' +
-      '<rect x="50" y="54" width="20" height="28" fill="' + look.door + '"/>' +
-      emblem(id, look.accent) +
-      '</svg>';
+    if (id === 'icecream') {
+      return '<rect width="120" height="90" fill="#ffe4ef"/>' +
+        '<rect y="70" width="120" height="20" fill="#f0d2c4"/>' +
+        '<rect x="8" y="34" width="62" height="38" fill="#fffaf0" stroke="#e07a5f" stroke-width="2"/>' +
+        '<path d="M8 34 H70 V42 H8 Z" fill="#e07a5f"/>' +
+        '<path d="M8 42 H70 V48 H8 Z" fill="#fff"/>' +
+        '<circle cx="28" cy="56" r="7" fill="#f0a0c0"/>' +
+        '<circle cx="46" cy="56" r="7" fill="#e8c84a"/>' +
+        '<polygon points="86,78 104,40 112,78" fill="#e8c49a"/>' +
+        '<circle cx="104" cy="36" r="10" fill="#f0a0c0"/>' +
+        '<g class="idle-spark"><circle cx="96" cy="22" r="2" fill="#fff"/><circle cx="114" cy="28" r="1.6" fill="#e8c84a"/></g>';
+    }
+    if (id === 'firehouse') {
+      return '<rect width="120" height="90" fill="#f8e4de"/>' +
+        '<rect y="72" width="120" height="18" fill="#d7b48a"/>' +
+        '<rect x="10" y="32" width="78" height="42" fill="#d4564e"/>' +
+        '<rect x="18" y="40" width="28" height="34" fill="#8eb4c9"/>' +
+        '<rect x="50" y="40" width="28" height="34" fill="#8eb4c9"/>' +
+        '<rect x="86" y="14" width="12" height="40" fill="#a35f38"/>' +
+        '<circle class="idle-glow" cx="92" cy="12" r="6" fill="#e8c84a"/>' +
+        '<g class="idle-flag"><polygon points="98,16 118,22 98,28" fill="#fffaf0"/></g>' +
+        '<circle cx="40" cy="24" r="4" fill="#e8c84a"/>';
+    }
+    if (id === 'zoo') {
+      return '<rect width="120" height="90" fill="#e5f2d8"/>' +
+        '<rect y="70" width="120" height="20" fill="#8fa87a"/>' +
+        '<rect x="18" y="36" width="14" height="36" fill="#a35f38"/>' +
+        '<rect x="88" y="36" width="14" height="36" fill="#a35f38"/>' +
+        '<path d="M18 36 Q60 8 102 36" fill="none" stroke="#5f7a52" stroke-width="6"/>' +
+        '<circle cx="46" cy="58" r="8" fill="#fffaf0"/>' +
+        '<circle cx="44" cy="56" r="1.4" fill="#2c241c"/>' +
+        '<rect x="62" y="48" width="6" height="22" fill="#e8c84a"/>' +
+        '<circle cx="65" cy="44" r="6" fill="#e8c84a"/>' +
+        '<g class="idle-spark"><circle cx="60" cy="22" r="1.6" fill="#e8c84a"/></g>';
+    }
+    if (id === 'vet') {
+      return '<rect width="120" height="90" fill="#e7f4f1"/>' +
+        '<rect y="70" width="120" height="20" fill="#d5e0ea"/>' +
+        '<rect x="16" y="34" width="70" height="38" rx="4" fill="#fffaf0" stroke="#7a9a68" stroke-width="2"/>' +
+        '<path d="M40 46 C40 38 56 38 56 46 C56 56 48 62 48 62 C48 62 40 56 40 46 Z" fill="#e07a5f"/>' +
+        '<rect class="idle-glow" x="62" y="42" width="16" height="14" fill="#d7e6ef"/>' +
+        '<rect x="40" y="64" width="16" height="8" fill="#8eb4c9"/>' +
+        '<circle cx="98" cy="58" r="12" fill="#7a9a68"/>' +
+        '<rect x="96" y="58" width="4" height="16" fill="#5f7a52"/>';
+    }
+    if (id === 'police') {
+      return '<rect width="120" height="90" fill="#e7eef6"/>' +
+        '<rect y="70" width="120" height="20" fill="#c4a574"/>' +
+        '<rect x="18" y="36" width="64" height="36" fill="#fffaf0" stroke="#3d4a62" stroke-width="3"/>' +
+        '<polygon points="18,36 50,16 82,36" fill="#3d4a62"/>' +
+        '<polygon points="50,28 54,40 66,40 56,48 60,60 50,52 40,60 44,48 34,40 46,40" fill="#e8c84a"/>' +
+        '<rect class="idle-glow" x="28" y="46" width="12" height="12" fill="#f0e0a0"/>' +
+        '<rect x="58" y="50" width="14" height="22" fill="#5f7a52"/>' +
+        '<g class="idle-flag"><polygon points="86,22 112,28 86,34" fill="#8eb4c9"/></g>' +
+        '<rect x="84" y="22" width="2" height="30" fill="#3d4a62"/>';
+    }
+    if (id === 'museum') {
+      return '<rect width="120" height="90" fill="#f4efe6"/>' +
+        '<rect y="74" width="120" height="16" fill="#d9c7ae"/>' +
+        '<polygon points="14,48 60,18 106,48" fill="#6b5344"/>' +
+        '<rect x="22" y="48" width="76" height="28" fill="#fffaf0"/>' +
+        '<rect x="30" y="48" width="6" height="28" fill="#efe6d4"/>' +
+        '<rect x="84" y="48" width="6" height="28" fill="#efe6d4"/>' +
+        '<rect class="idle-glow" x="46" y="54" width="28" height="16" fill="#f0e0a0" opacity="0.85"/>' +
+        '<ellipse cx="60" cy="62" rx="8" ry="5" fill="#7a9a68"/>' +
+        '<rect x="40" y="76" width="40" height="4" fill="#a35f38"/>';
+    }
+    if (id === 'nature') {
+      return '<rect width="120" height="90" fill="#e7f3e4"/>' +
+        '<rect y="66" width="120" height="24" fill="#8fa87a"/>' +
+        '<rect x="18" y="44" width="46" height="26" fill="#a35f38"/>' +
+        '<polygon points="12,46 41,24 70,46" fill="#5f7a52"/>' +
+        '<rect class="idle-glow" x="28" y="52" width="12" height="10" fill="#f0e0a0"/>' +
+        '<rect x="78" y="36" width="8" height="34" fill="#5f7a52"/>' +
+        '<circle cx="82" cy="30" r="14" fill="#7a9a68"/>' +
+        '<g class="idle-spark"><circle cx="100" cy="24" r="2" fill="#e8c84a"/></g>';
+    }
+    if (id === 'parlor') {
+      return '<rect width="120" height="90" fill="#e7f0dc"/>' +
+        '<rect y="68" width="120" height="22" fill="#3d6b4f"/>' +
+        '<rect x="16" y="34" width="88" height="36" fill="#2f4a3c"/>' +
+        '<polygon points="12,36 60,14 108,36" fill="#1f3329"/>' +
+        '<ellipse cx="60" cy="56" rx="22" ry="10" fill="#3d6b4f" stroke="#e8c84a" stroke-width="2"/>' +
+        '<rect x="40" y="46" width="8" height="12" fill="#fffaf0"/>' +
+        '<rect x="54" y="44" width="8" height="12" fill="#d4564e"/>' +
+        '<rect x="68" y="46" width="8" height="12" fill="#fffaf0"/>' +
+        '<g class="idle-flag"><polygon points="18,20 36,26 18,32" fill="#e8c84a"/></g>' +
+        '<g class="idle-flag"><polygon points="84,18 108,24 84,30" fill="#e07a5f"/></g>' +
+        '<g class="idle-spark"><circle cx="60" cy="28" r="1.6" fill="#f0e0a0"/></g>';
+    }
+    if (id === 'store') {
+      return '<rect width="120" height="90" fill="#fff6ea"/>' +
+        '<rect y="70" width="120" height="20" fill="#e7c7a1"/>' +
+        '<rect x="14" y="32" width="78" height="40" fill="#fffaf0" stroke="#c4784a" stroke-width="2"/>' +
+        '<path d="M10 32 H96 L90 42 H16 Z" fill="#d4564e"/>' +
+        '<rect class="idle-glow" x="22" y="48" width="28" height="16" fill="#f0e0a0"/>' +
+        '<circle cx="30" cy="56" r="3" fill="#e8c84a"/>' +
+        '<circle cx="42" cy="56" r="3" fill="#8eb4c9"/>' +
+        '<rect x="58" y="48" width="16" height="24" fill="#7a9a68"/>' +
+        '<circle cx="100" cy="40" r="8" fill="#e8c84a" stroke="#a35f38" stroke-width="2"/>' +
+        '<g class="idle-spark"><circle cx="100" cy="24" r="2" fill="#fff"/></g>';
+    }
+    if (id === 'toystore') {
+      return '<rect width="120" height="90" fill="#ffe4ef"/>' +
+        '<rect y="72" width="120" height="18" fill="#f0d2c4"/>' +
+        '<rect x="16" y="40" width="28" height="28" fill="#d4564e"/>' +
+        '<rect x="40" y="28" width="24" height="40" fill="#e8c84a"/>' +
+        '<rect x="60" y="46" width="22" height="22" fill="#8eb4c9"/>' +
+        '<circle cx="30" cy="54" r="6" fill="#fffaf0"/>' +
+        '<path d="M88 70 Q104 30 118 48" fill="none" stroke="#d4564e" stroke-width="2"/>' +
+        '<polygon points="112,46 120,40 118,52" fill="#e07a5f"/>' +
+        '<g class="idle-spark"><circle cx="96" cy="24" r="2" fill="#e8c84a"/><circle cx="18" cy="22" r="1.5" fill="#fff"/></g>';
+    }
+    if (id === 'bookstore') {
+      return '<rect width="120" height="90" fill="#f7f1e6"/>' +
+        '<rect y="72" width="120" height="18" fill="#d9c7ae"/>' +
+        '<path d="M10 46 Q40 20 70 46 Q70 70 40 78 Q10 70 10 46 Z" fill="#fffaf0" stroke="#6b5344" stroke-width="2"/>' +
+        '<path d="M40 28 V72" stroke="#c4784a" stroke-width="2"/>' +
+        '<rect x="74" y="30" width="10" height="40" fill="#c4784a"/>' +
+        '<rect x="86" y="26" width="10" height="44" fill="#e8c84a"/>' +
+        '<rect x="98" y="34" width="10" height="36" fill="#5f7a52"/>' +
+        '<rect class="idle-glow" x="22" y="48" width="14" height="10" fill="#f0e0a0"/>';
+    }
+    if (id === 'aquarium') {
+      return '<rect width="120" height="90" fill="#d5eef8"/>' +
+        '<rect x="14" y="18" width="40" height="58" rx="4" fill="#8eb4c9" stroke="#3d6b8a" stroke-width="3"/>' +
+        '<ellipse cx="34" cy="46" rx="12" ry="6" fill="#f0e0a0"/>' +
+        '<circle cx="28" cy="45" r="1.5" fill="#2c241c"/>' +
+        '<rect x="62" y="18" width="44" height="58" rx="4" fill="#7aa8c4" stroke="#3d6b8a" stroke-width="3"/>' +
+        '<circle cx="80" cy="40" r="5" fill="#e07a5f"/>' +
+        '<circle cx="92" cy="54" r="4" fill="#e8c84a"/>' +
+        '<path d="M70 64 Q84 54 100 64" fill="#7a9a68"/>' +
+        '<g class="idle-bubble"><circle cx="30" cy="28" r="2" fill="#fff"/><circle cx="86" cy="30" r="2" fill="#fff"/></g>';
+    }
+    if (id === 'art') {
+      return '<rect width="120" height="90" fill="#fff1e4"/>' +
+        '<rect y="70" width="120" height="20" fill="#e7c7a1"/>' +
+        '<polygon points="18,70 46,28 74,70" fill="#c4784a"/>' +
+        '<rect class="idle-glow" x="36" y="40" width="18" height="14" fill="#fffaf0"/>' +
+        '<circle cx="45" cy="46" r="4" fill="#e8c84a"/>' +
+        '<rect x="78" y="36" width="28" height="22" fill="#fffaf0" stroke="#a35f38"/>' +
+        '<circle cx="88" cy="48" r="4" fill="#d4564e"/>' +
+        '<circle cx="100" cy="46" r="4" fill="#8eb4c9"/>' +
+        '<g class="idle-spark"><circle cx="16" cy="24" r="3" fill="#e07a5f"/><circle cx="104" cy="22" r="2" fill="#e8c84a"/></g>';
+    }
+    if (id === 'music') {
+      return '<rect width="120" height="90" fill="#f4f0fa"/>' +
+        '<rect y="70" width="120" height="20" fill="#d9c7ae"/>' +
+        '<rect x="12" y="40" width="50" height="32" rx="4" fill="#6b5344"/>' +
+        '<rect x="18" y="48" width="38" height="6" fill="#fffaf0"/>' +
+        '<rect x="18" y="58" width="38" height="6" fill="#c4784a"/>' +
+        '<ellipse cx="84" cy="58" rx="16" ry="12" fill="#a35f38"/>' +
+        '<ellipse cx="84" cy="58" rx="6" ry="4" fill="#f0e0a0"/>' +
+        '<circle cx="104" cy="30" r="5" fill="#8eb4c9"/>' +
+        '<path d="M104 30 V58" stroke="#3d4a62" stroke-width="2"/>' +
+        '<g class="idle-spark"><circle cx="70" cy="24" r="2" fill="#e8c84a"/><circle cx="112" cy="18" r="1.5" fill="#fff"/></g>';
+    }
+    if (id === 'beach') {
+      return '<rect width="120" height="52" fill="#c5e4f5"/>' +
+        '<circle cx="96" cy="20" r="8" fill="#f0e0a0"/>' +
+        '<rect y="52" width="120" height="16" fill="#8eb4c9"/>' +
+        '<g class="idle-wave"><path d="M0 56 Q20 48 40 56 T80 56 T120 56" fill="none" stroke="#fff" stroke-width="3"/></g>' +
+        '<rect y="68" width="120" height="22" fill="#f0e0a0"/>' +
+        '<polygon points="18,78 40,40 62,78" fill="#d4564e"/>' +
+        '<line x1="40" y1="40" x2="40" y2="78" stroke="#a35f38" stroke-width="2"/>' +
+        '<circle cx="78" cy="76" r="4" fill="#fffaf0"/>' +
+        '<circle cx="90" cy="78" r="3" fill="#e8c49a"/>' +
+        '<g class="idle-spark"><circle cx="24" cy="18" r="1.5" fill="#fff"/></g>';
+    }
+    if (id === 'camp') {
+      return '<rect width="120" height="58" fill="#d5eef8"/>' +
+        '<rect y="58" width="120" height="32" fill="#8fa87a"/>' +
+        '<polygon points="16,70 48,28 80,70" fill="#5f7a52"/>' +
+        '<polygon points="40,70 48,52 56,70" fill="#243c2c"/>' +
+        '<rect x="86" y="40" width="4" height="24" fill="#a35f38"/>' +
+        '<polygon points="78,46 102,46 90,34" fill="#e8c84a"/>' +
+        '<circle class="idle-glow" cx="90" cy="54" r="4" fill="#f0e0a0"/>' +
+        '<g class="idle-spark"><circle cx="24" cy="18" r="1.4" fill="#fff"/><circle cx="40" cy="12" r="1.2" fill="#fff"/></g>';
+    }
+    if (id === 'train') {
+      return '<rect width="120" height="90" fill="#e7eef6"/>' +
+        '<rect y="72" width="120" height="18" fill="#c4a574"/>' +
+        '<rect x="8" y="46" width="70" height="28" rx="4" fill="#d4564e"/>' +
+        '<rect class="idle-glow" x="14" y="52" width="12" height="10" fill="#d7e6ef"/>' +
+        '<rect x="30" y="52" width="12" height="10" fill="#d7e6ef"/>' +
+        '<rect x="46" y="52" width="12" height="10" fill="#d7e6ef"/>' +
+        '<circle cx="22" cy="76" r="5" fill="#2c241c"/>' +
+        '<circle cx="58" cy="76" r="5" fill="#2c241c"/>' +
+        '<rect x="84" y="28" width="26" height="36" fill="#fffaf0" stroke="#3d4a62" stroke-width="2"/>' +
+        '<circle cx="97" cy="40" r="6" fill="#fff" stroke="#3d4a62"/>' +
+        '<path d="M97 40 L97 36" stroke="#d4564e" stroke-width="1.5"/>' +
+        '<g class="idle-smoke"><circle cx="24" cy="40" r="3" fill="#fff"/><circle cx="32" cy="34" r="2" fill="#fff"/></g>';
+    }
+    if (id === 'cottage') {
+      return frontInner('pet');
+    }
+    return '<rect width="120" height="90" fill="#c5e4f5"/>' +
+      '<rect y="64" width="120" height="26" fill="#8fa87a"/>' +
+      '<rect x="22" y="40" width="68" height="32" rx="3" fill="#fff6ea" stroke="#c4784a" stroke-width="2"/>' +
+      '<polygon points="16,42 56,16 96,42" fill="#c4784a"/>' +
+      '<rect x="30" y="14" width="8" height="16" fill="#a35f38"/>' +
+      '<g class="idle-smoke"><circle cx="34" cy="10" r="3" fill="#fff"/><circle cx="40" cy="5" r="2.2" fill="#fff" opacity="0.8"/></g>' +
+      '<rect class="idle-glow" x="32" y="48" width="14" height="12" rx="6" fill="#f0e0a0"/>' +
+      '<rect x="58" y="50" width="16" height="22" fill="#7a9a68"/>' +
+      '<circle cx="70" cy="62" r="1.4" fill="#e8c84a"/>' +
+      '<rect x="28" y="68" width="24" height="5" fill="#5f7a52"/>' +
+      '<circle cx="34" cy="66" r="3" fill="#d4564e"/>' +
+      '<circle cx="46" cy="66" r="3" fill="#e8c84a"/>' +
+      '<g class="idle-flag"><polygon points="96,30 116,36 96,42" fill="#e8c84a"/></g>' +
+      '<rect x="94" y="30" width="2" height="24" fill="#a35f38"/>';
+  }
+
+  function renderHouseFront(id) {
+    return frontWrap(frontInner(id || 'pet'));
+  }
+
+  function skyGlyph(id, x, w, look, roofY, wallY, wallH) {
+    var mid = x + w / 2;
+    if (id === 'pond' || id === 'beach') {
+      return '<ellipse cx="' + mid + '" cy="96" rx="' + Math.max(8, w / 2) + '" ry="8" fill="#8eb4c9"/>' +
+        '<circle cx="' + (x + 4) + '" cy="88" r="3" fill="#fffaf0"/>';
+    }
+    if (id === 'garden' || id === 'playground' || id === 'nature') {
+      return '<circle cx="' + (x + w * 0.3) + '" cy="84" r="' + Math.max(5, w * 0.22) + '" fill="#d4564e"/>' +
+        '<circle cx="' + (x + w * 0.7) + '" cy="76" r="' + Math.max(5, w * 0.2) + '" fill="#7a9a68"/>';
+    }
+    if (id === 'camp') {
+      return '<polygon points="' + x + ',96 ' + mid + ',58 ' + (x + w) + ',96" fill="#5f7a52"/>';
+    }
+    if (id === 'aquarium') {
+      return '<rect x="' + x + '" y="64" width="' + w + '" height="30" rx="3" fill="#8eb4c9" stroke="#3d6b8a"/>';
+    }
+    if (id === 'farm') {
+      return '<polygon points="' + x + ',70 ' + mid + ',48 ' + (x + w) + ',70" fill="#7a3b32"/>' +
+        '<rect x="' + x + '" y="70" width="' + w + '" height="26" fill="#a35f38"/>';
+    }
+    if (id === 'firehouse') {
+      return '<rect x="' + x + '" y="62" width="' + w + '" height="34" fill="#d4564e"/>' +
+        '<rect x="' + (x + w * 0.72) + '" y="46" width="4" height="20" fill="#e8c84a"/>';
+    }
+    if (id === 'train') {
+      return '<rect x="' + x + '" y="72" width="' + (w * 0.85) + '" height="20" rx="3" fill="#d4564e"/>' +
+        '<circle cx="' + (x + 4) + '" cy="94" r="3" fill="#2c241c"/>';
+    }
+    if (id === 'market' || id === 'icecream' || id === 'store') {
+      return '<path d="M' + x + ' 78 Q' + mid + ' 48 ' + (x + w) + ' 78 V96 H' + x + ' Z" fill="' + look.roof + '"/>';
+    }
+    if (id === 'library' || id === 'museum') {
+      return '<polygon points="' + x + ',78 ' + mid + ',50 ' + (x + w) + ',78" fill="' + look.roof + '"/>' +
+        '<rect x="' + (x + 2) + '" y="78" width="' + (w - 4) + '" height="18" fill="' + look.wall + '"/>';
+    }
+    if (id === 'bakery') {
+      return '<rect x="' + x + '" y="' + wallY + '" width="' + w + '" height="' + wallH + '" fill="' + look.wall + '"/>' +
+        '<path d="M' + x + ' ' + wallY + ' Q' + (x + w * 0.25) + ' ' + (wallY - 10) + ' ' + mid + ' ' + wallY +
+        ' Q' + (x + w * 0.75) + ' ' + (wallY - 10) + ' ' + (x + w) + ' ' + wallY + '" fill="' + look.roof + '"/>';
+    }
+    return '<rect x="' + x + '" y="' + wallY + '" width="' + w + '" height="' + wallH + '" fill="' + look.wall + '" stroke="' + look.roof + '" stroke-width="2"/>' +
+      '<polygon points="' + (x - 2) + ',' + wallY + ' ' + mid + ',' + roofY + ' ' + (x + w + 2) + ',' + wallY + '" fill="' + look.roof + '"/>' +
+      '<rect x="' + (x + w * 0.38) + '" y="' + (wallY + wallH * 0.45) + '" width="' + Math.max(3, w * 0.22) + '" height="' + Math.max(6, wallH * 0.5) + '" fill="' + look.door + '"/>';
   }
 
   function renderSkylineSvg(state) {
@@ -1621,15 +2131,7 @@
       var roofY = n === 1 ? 28 : 48;
       var wallY = roofY + 16;
       var wallH = 78 - (wallY - 28);
-      if (places[i].id === 'pond') {
-        bits += '<ellipse cx="' + (x + w / 2) + '" cy="92" rx="' + (w / 2) + '" ry="8" fill="#8eb4c9"/>';
-      } else if (places[i].id === 'garden' || places[i].id === 'playground') {
-        bits += '<circle cx="' + (x + 8) + '" cy="78" r="6" fill="#d4564e"/>' +
-          '<circle cx="' + (x + w - 8) + '" cy="74" r="6" fill="#e8c84a"/>';
-      } else {
-        bits += '<rect x="' + x + '" y="' + wallY + '" width="' + w + '" height="' + wallH + '" fill="' + look.wall + '" stroke="' + look.roof + '" stroke-width="2"/>' +
-          '<polygon points="' + (x - 3) + ',' + wallY + ' ' + (x + w / 2) + ',' + roofY + ' ' + (x + w + 3) + ',' + wallY + '" fill="' + look.roof + '"/>';
-      }
+      bits += skyGlyph(places[i].id, x, w, look, roofY, wallY, wallH);
     }
     return '<svg class="skyline-svg" viewBox="0 0 360 120" width="100%" height="100%" aria-hidden="true">' +
       '<rect width="360" height="120" fill="#e7f0dc"/>' +
@@ -1677,6 +2179,13 @@
     placeItem: placeItem,
     moveItem: moveItem,
     returnItem: returnItem,
+    setItemPosition: setItemPosition,
+    wheelGroups: wheelGroups,
+    wheelText: wheelText,
+    categoryFor: categoryFor,
+    grantDecor: grantDecor,
+    pushLog: pushLog,
+    renderItemIcon: renderItemIcon,
     renderSkylineSvg: renderSkylineSvg,
     renderHouseFront: renderHouseFront,
     renderRoomSvg: renderRoomSvg,
