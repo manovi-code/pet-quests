@@ -15,6 +15,7 @@
   'use strict';
 
   var MAX_SPINS = 3;
+  var FLIP_BACK_MS = 1000;
   var MAX_CARD_ROUNDS = 2;
   var SPIN_ICONS = ['strawberry', 'star', 'leaf', 'cupcake', 'heart'];
   var CARD_FACES = ['fox', 'frog', 'bird'];
@@ -196,7 +197,7 @@
     }
     return {
       cards: cards,
-      message: 'Those two are different. You can try another pair.',
+      message: 'Those two are different. They will turn back in a moment.',
       matched: false,
       needsContinue: true,
       changed: true,
@@ -272,6 +273,7 @@
 
   return {
     MAX_SPINS: MAX_SPINS,
+    FLIP_BACK_MS: FLIP_BACK_MS,
     MAX_CARD_ROUNDS: MAX_CARD_ROUNDS,
     SPIN_ICONS: SPIN_ICONS,
     ensureParty: ensureParty,

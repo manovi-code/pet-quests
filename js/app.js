@@ -63,6 +63,11 @@
   var actionPage = 0;
   var shelfPage = 0;
   var albumPage = 0;
+  var closetTab = 'hat';
+  var closetPage = 0;
+  var shopTab = 'room';
+  var outingRun = null;
+  var flipTimer = null;
   var logPage = 0;
   var notePage = 0;
   var townSwipe = null;
@@ -106,6 +111,10 @@
 
   function go(name) {
     screen = name;
+    if (flipTimer) {
+      clearTimeout(flipTimer);
+      flipTimer = null;
+    }
     feedback = null;
     keypadValue = '';
     readingRevealed = false;
@@ -319,6 +328,9 @@
     else if (screen === 'game') renderGame(app);
     else if (screen === 'board') renderBoard(app);
     else if (screen === 'album') renderAlbum(app);
+    else if (screen === 'closet') renderCloset(app);
+    else if (screen === 'outside') renderOutside(app);
+    else if (screen === 'outing') renderOuting(app);
     else if (screen === 'log') renderLog(app);
     else renderWelcome(app);
 
@@ -327,15 +339,20 @@
     bindGlobal();
   }
 
+  function petMarkup(stage, opts) {
+    opts = opts || {};
+    if (typeof PQCloset !== 'undefined') PQCloset.ensure(state);
+    opts.outfit = state.outfit;
+    if (!opts.label) opts.label = PQPets.displayName(state);
+    return PQPets.renderPetSvg(state.petId, stage, opts);
+  }
+
   function headerPet(force) {
     if (!state.petId) return '';
     if (!force && !state.onboardingDone) return '';
     return (
       '<span class="header-pet" aria-hidden="true">' +
-      PQPets.renderPetSvg(state.petId, state.growthStage || 0, {
-        label: PQPets.displayName(state),
-        mood: petMood
-      }) +
+      petMarkup(state.growthStage || 0, { mood: petMood }) +
       '</span>'
     );
   }
@@ -566,7 +583,7 @@
       '</div>' +
       '<div class="pet-strip">' +
       '<div class="pet-face">' +
-      PQPets.renderPetSvg(state.petId, stage, { label: name, mood: days.giftPending ? 'happy' : petMood }) +
+      petMarkup(stage, { label: name, mood: days.giftPending ? 'happy' : petMood }) +
       '</div>' +
       '<div class="pet-strip-copy"><h2>' + esc(name) + '</h2><p>' +
       esc(PQPets.STAGE_LABELS[stage] || '') + '</p></div>' +
@@ -683,10 +700,16 @@
     if (house.id === 'store') {
       dock.push('<button type="button" class="dock-btn" data-act="open-shop">🏪 Shop</button>');
     }
-    PQBoards.forPlace(state, house.id).forEach(function (meta) {
+    PQBoards.forPlace(state, house.id).concat(PQArcade.forPlace(state, house.id)).forEach(function (meta) {
       dock.push('<button type="button" class="dock-btn" data-act="open-board" data-game="' +
         meta.id + '">🎲 ' + esc(meta.button) + '</button>');
     });
+    if (house.id === 'pet') {
+      if (PQOutings.openList(state).length) {
+        dock.unshift('<button type="button" class="dock-btn" data-act="open-outside">🌳 Go outside</button>');
+      }
+      dock.unshift('<button type="button" class="dock-btn" data-act="open-closet">👗 Closet</button>');
+    }
     actions.forEach(function (action) {
       dock.push(
         '<button type="button" class="dock-btn" data-act="role-act" data-action="' + action.id + '">' +
@@ -696,7 +719,7 @@
     var petBit =
       house.id === 'pet' || house.id === 'friend'
         ? '<div class="pet-in-room">' +
-          PQPets.renderPetSvg(state.petId, state.growthStage || 0, { label: name, mood: petMood }) +
+          petMarkup(state.growthStage || 0, { label: name, mood: petMood }) +
           '</div>'
         : '';
     var thingsBtn = PQWorld.wheelGroups(state).length
@@ -716,6 +739,7 @@
       PQWorld.renderRoomSvg(house.id, state, { bare: true }) +
       placedItemsHtml(house.id) +
       petBit +
+      (house.id === 'pet' ? '<button type="button" class="closet-hot" data-act="open-closet">Closet</button>' : '') +
       '<button type="button" class="put-away" data-act="put-away">📦 Put away</button>' +
       thingsBtn +
       '</div>' +
@@ -782,7 +806,7 @@
       '<main class="panel quest fit-col">' +
       '<div class="quest-top">' +
       '<div class="pet-face quest-pet">' +
-      (state.petId ? PQPets.renderPetSvg(state.petId, state.growthStage || 0, { label: PQPets.displayName(state), mood: petMood }) : '') +
+      (state.petId ? petMarkup(state.growthStage || 0, { mood: petMood }) : '') +
       '</div>' +
       '<div class="quest-progress">' +
       '<div class="quest-progress-top"><span>Quest</span><span>' +
@@ -822,10 +846,7 @@
     var pet = '';
     if (state.petId) {
       pet = '<div class="react-pet">' +
-        PQPets.renderPetSvg(state.petId, state.growthStage || 0, {
-          label: PQPets.displayName(state),
-          mood: good ? 'happy' : 'cheer'
-        }) +
+        petMarkup(state.growthStage || 0, { mood: good ? 'happy' : 'cheer' }) +
         '</div>';
     }
     return (
@@ -988,7 +1009,7 @@
       headerBar('Nice work') +
       '<main class="panel celebrate fit-col">' +
       '<div class="pet-preview big">' +
-      PQPets.renderPetSvg(state.petId, stage, { label: name, mood: 'happy' }) +
+      petMarkup(stage, { label: name, mood: 'happy' }) +
       '</div>' +
       '<h2>Nice work</h2>' +
       '<p class="lede">' + esc(name) + ' looks proud.</p>' +
@@ -1037,7 +1058,8 @@
     app.innerHTML =
       headerBar('Party', { back: true }) +
       '<main class="panel party fit-col">' +
-      '<div class="party-friends" aria-hidden="true">' +
+      '<div class="party-friends">' +
+      '<span class="party-pet">' + petMarkup(state.growthStage || 0, { mood: 'happy' }) + '</span>' +
       PQParty.renderFaceSvg('fox') +
       PQParty.renderFaceSvg('frog') +
       PQParty.renderFaceSvg('bird') +
@@ -1446,7 +1468,7 @@
     var grade = state.courses && state.courses.grade;
     var coins = PQBank.getCoins(state);
     if (!shopItemId) {
-      var items = PQShop.catalog(state);
+      var items = shopTab === 'clothes' ? PQCloset.forSale(state) : PQShop.catalog(state);
       var per = (window.innerWidth || 390) >= 700 ? 8 : 6;
       var pages = pageCount(items.length || 1, per);
       shelfPage = clampPage(shelfPage, pages);
@@ -1456,19 +1478,26 @@
           return '<button type="button" class="btn secondary shop-item" data-act="shop-item" data-item="' +
             item.id + '">' + esc(String(item.name).replace(/^an?\s+/i, '')) + ' · ' + item.price + '</button>';
         }).join('')
-        : '<p class="lede">The shelves are resting. You already brought these things home.</p>';
+        : '<p class="lede">' + (shopTab === 'clothes'
+          ? 'The clothes shelf is resting. Those pieces are in the closet.'
+          : 'The shelves are resting. You already brought these things home.') + '</p>';
       var gentleShop = shopNote ? '<div class="hint-strip gentle" role="status"><p>' + esc(shopNote) + '</p></div>' : '';
+      var shopTabs = '<div class="chip-row tight">' +
+        '<button type="button" class="' + (shopTab !== 'clothes' ? 'on' : '') + '" data-act="shop-tab" data-tab="room">Room</button>' +
+        '<button type="button" class="' + (shopTab === 'clothes' ? 'on' : '') + '" data-act="shop-tab" data-tab="clothes">Clothes</button>' +
+        '</div>';
       app.innerHTML =
         headerBar('Shop', { back: true }) +
         '<main class="panel shop fit-col">' +
         gentleShop +
+        shopTabs +
         '<p class="lede">🪙 ' + coins + ' coins. Pick something, then make the price.</p>' +
         '<div class="shelf-grid">' + shelf + '</div>' +
         pagerHtml(shelfPage, items.length ? pages : 1, 'shelf-page') +
         '</main>';
       return;
     }
-    var item = PQShop.itemById(shopItemId);
+    var item = shopTab === 'clothes' ? PQCloset.byId(shopItemId) : PQShop.itemById(shopItemId);
     if (!item || !shopProblem) {
       shopItemId = null;
       renderShop(app);
@@ -1537,7 +1566,7 @@
         headerBar(gameRound.title, { back: true }) +
         '<main class="panel fit-col">' +
         '<div class="pet-face">' +
-        PQPets.renderPetSvg(state.petId, state.growthStage || 0, { label: PQPets.displayName(state), mood: 'happy' }) +
+        petMarkup(state.growthStage || 0, { mood: 'happy' }) +
         '</div>' +
         '<h2>You finished</h2>' +
         '<p class="lede">' + gameRound.reward + ' coins go in the bank.</p>' +
@@ -1559,20 +1588,109 @@
   }
 
   function renderAlbum(app) {
-    var book = PQDays.collection(state);
-    var list = book.stickers.length ? book.stickers : [{ name: 'Your book is ready for the first sticker.' }];
-    var per = 5;
-    var pages = pageCount(list.length, per);
-    albumPage = clampPage(albumPage, pages);
-    var stickers = list.slice(albumPage * per, albumPage * per + per).map(function (sticker) {
-      return '<li>' + esc(sticker.name) + '</li>';
+    var book = PQStickers.book(state);
+    var decor = state.world && state.world.unlocks ? state.world.unlocks.length : 0;
+    if (!book.pages.length) {
+      app.innerHTML =
+        headerBar('Stickers', { back: true }) +
+        '<main class="panel fit-col">' +
+        '<p class="lede">Your book is ready for the first sticker.</p>' +
+        '<p class="week-hint">' + decor + (decor === 1 ? ' decoration' : ' decorations') + ' to place.</p>' +
+        '</main>';
+      return;
+    }
+    albumPage = clampPage(albumPage, book.pages.length);
+    var page = book.pages[albumPage];
+    var cells = page.stickers.map(function (sticker) {
+      return '<div class="sticker-cell">' + PQStickers.svg(sticker.id, sticker.name) +
+        '<span>' + esc(sticker.name) + '</span></div>';
     }).join('');
+    var badge = page.complete
+      ? '<div class="sticker-cell">' + PQStickers.badge(page.id) + '<span>' + esc(page.name) + ' badge</span></div>'
+      : '';
     app.innerHTML =
       headerBar('Stickers', { back: true }) +
       '<main class="panel fit-col">' +
-      '<p class="lede">' + book.decor + (book.decor === 1 ? ' decoration' : ' decorations') + ' to place.</p>' +
-      '<ul class="soft-list">' + stickers + '</ul>' +
-      pagerHtml(albumPage, pages, 'album-page') +
+      '<p class="lede">' + esc(page.name) + '</p>' +
+      '<div class="sticker-grid">' + cells + badge + '</div>' +
+      pagerHtml(albumPage, book.pages.length, 'album-page') +
+      '</main>';
+  }
+
+  function renderCloset(app) {
+    PQCloset.ensure(state);
+    var tabs = PQCloset.SLOTS.map(function (slot) {
+      return '<button type="button" class="' + (closetTab === slot.id ? 'on' : '') + '" data-act="closet-tab" data-slot="' +
+        slot.id + '">' + esc(slot.label) + '</button>';
+    }).join('');
+    var items = PQCloset.visible(state, closetTab);
+    var pages = pageCount(Math.max(items.length, 1), 4);
+    closetPage = clampPage(closetPage, pages);
+    var slice = items.slice(closetPage * 4, closetPage * 4 + 4);
+    var grid = slice.length
+      ? slice.map(function (item) {
+        var on = state.outfit[item.slot] === item.id ? ' is-on' : '';
+        return '<button type="button" class="closet-card' + on + '" data-act="wear" data-item="' + item.id + '">' +
+          PQCloset.icon(item) + '<span>' + esc(item.name) + '</span></button>';
+      }).join('')
+      : '<p class="week-hint">This spot is empty for now.</p>';
+    app.innerHTML =
+      headerBar('Closet', { back: true }) +
+      '<main class="panel closet fit-col">' +
+      '<div class="dress-stage">' + petMarkup(state.growthStage || 0, { mood: 'happy' }) + '</div>' +
+      '<div class="closet-tabs">' + tabs + '</div>' +
+      '<div class="closet-grid">' + grid + '</div>' +
+      pagerHtml(closetPage, pages, 'closet-page') +
+      '</main>';
+  }
+
+  function renderOutside(app) {
+    var list = PQOutings.openList(state);
+    var buttons = list.map(function (row) {
+      return '<button type="button" class="btn primary" data-act="start-outing" data-outing="' + row.id + '">' +
+        esc(row.title) + '</button>';
+    }).join('');
+    app.innerHTML =
+      headerBar('Go outside', { back: true }) +
+      '<main class="panel fit-col">' +
+      '<p class="lede">' + (buttons ? 'Pick a short walk.' : 'A walk can open after a quest.') + '</p>' +
+      '<div class="choices">' + (buttons || '<p class="week-hint">Finish a quest, then look again.</p>') + '</div>' +
+      '</main>';
+  }
+
+  function renderOuting(app) {
+    if (!outingRun) {
+      go('outside');
+      return;
+    }
+    var step = PQOutings.current(outingRun);
+    var dots = outingRun.steps.map(function (row, i) {
+      var cls = i < outingRun.index ? ' on' : (i === outingRun.index ? ' on now' : '');
+      return '<i class="path-dot' + cls + '"></i>';
+    }).join('');
+    var body = '';
+    if (outingRun.done) {
+      body = '<p class="lede">' + esc(outingRun.note || 'You finished the walk.') + '</p>' +
+        '<button type="button" class="btn primary" data-act="outing-done">Back outside</button>';
+    } else if (step && step.kind === 'swing') {
+      body = '<p class="swing-count">' + (step.count || 0) + '</p>' +
+        '<h2 class="question">' + esc(step.prompt) + '</h2>' +
+        '<button type="button" class="btn primary" data-act="outing-swing">Swing</button>';
+    } else if (step) {
+      body = '<h2 class="question">' + esc(step.prompt) + '</h2><div class="choices grid-2">' +
+        step.choices.map(function (choice, i) {
+          return '<button type="button" class="choice-btn" data-act="outing-choice" data-idx="' + i + '">' +
+            esc(choice.label) + '</button>';
+        }).join('') + '</div>';
+    }
+    app.innerHTML =
+      headerBar(outingRun.title, { back: true }) +
+      '<main class="panel game fit-col">' +
+      '<div class="path-row">' + dots + '</div>' +
+      (step ? PQOutings.scene(step.scene) : '') +
+      (step && step.find ? '<p class="week-hint">You notice ' + esc(step.find) + '.</p>' : '') +
+      (outingRun.hint ? '<div class="hint-strip gentle" role="status"><p>' + esc(outingRun.hint) + '</p></div>' : '') +
+      body +
       '</main>';
   }
 
@@ -1748,26 +1866,114 @@
     return '<p class="week-hint">Match each word with its meaning.</p><div class="memory-grid">' + cards + '</div>';
   }
 
+  function choiceRow(list) {
+    return (list || []).map(function (choice, i) {
+      return '<button type="button" class="choice-btn" data-act="arcade-choice" data-idx="' + i + '">' +
+        esc(choice.label) + '</button>';
+    }).join('');
+  }
+
+  function paradePetSvg() {
+    return '<svg class="parade-pet" viewBox="0 0 32 32" aria-hidden="true"><circle cx="16" cy="20" r="8" fill="#e8c49a"/><circle cx="11" cy="12" r="4" fill="#e8c49a"/><circle cx="21" cy="12" r="4" fill="#e8c49a"/><circle cx="14" cy="19" r="1.2" fill="#2c241c"/><circle cx="18" cy="19" r="1.2" fill="#2c241c"/></svg>';
+  }
+
+  function renderHide() {
+    var cols = board.cols + 1;
+    var cells = '<span class="seek-label"></span>';
+    var c;
+    var r;
+    for (c = 1; c <= board.cols; c++) cells += '<span class="seek-label">' + c + '</span>';
+    for (r = 1; r <= board.rows; r++) {
+      cells += '<span class="seek-label">' + r + '</span>';
+      for (c = 1; c <= board.cols; c++) {
+        var open = board.open[r + ',' + c];
+        var target = board.ask && !open && board.ask.r === r && board.ask.c === c;
+        var inner = '';
+        if (open === 'pet') {
+          inner = '<svg viewBox="0 0 32 32" aria-hidden="true"><circle cx="16" cy="18" r="8" fill="#e8c49a"/><circle cx="13" cy="17" r="1.3" fill="#2c241c"/><circle cx="19" cy="17" r="1.3" fill="#2c241c"/></svg>';
+        } else if (open === 'empty') {
+          inner = '<svg viewBox="0 0 32 32" aria-hidden="true"><path d="M16 8 Q26 16 16 26 Q6 16 16 8 Z" fill="#7a9a68"/></svg>';
+        }
+        cells += '<span class="seek-cell' + (open ? ' open' : '') + (target ? ' is-target' : '') + '">' + inner + '</span>';
+      }
+    }
+    return '<p class="week-hint">Found ' + board.found + ' of ' + board.need + ' pets.</p>' +
+      '<h2 class="question">' + esc(board.prompt ? board.prompt.prompt : '') + '</h2>' +
+      '<div class="seek-board" style="grid-template-columns:repeat(' + cols + ',minmax(0,1fr))">' + cells + '</div>' +
+      (board.done ? '' : '<div class="choices grid-2">' + choiceRow(board.choices) + '</div>') +
+      '<button type="button" class="btn secondary" data-act="seek-mode">' +
+      (board.withPet ? 'Pet is looking too' : 'Play on your own') + '</button>';
+  }
+
+  function renderParade() {
+    var pets = '';
+    var i;
+    for (i = 0; i < board.need; i++) {
+      pets += i < board.pets ? paradePetSvg() : '<i class="path-dot"></i>';
+    }
+    return '<div class="parade-line">' + pets + '</div>' +
+      '<p class="week-hint">Count by ' + board.step + '.</p>' +
+      '<h2 class="question">' + esc(board.prompt ? board.prompt.prompt : '') + '</h2>' +
+      (board.done ? '' : '<div class="choices grid-2">' + choiceRow(board.choices) + '</div>');
+  }
+
+  function renderTreasure() {
+    var total = Math.max(board.goal || 1, 1);
+    var mark = board.done ? 15 : Math.min(15, Math.round((board.pos / total) * 15));
+    var cells = '';
+    var i;
+    for (i = 0; i < 16; i++) {
+      var cls = i === 15 ? ' chest' : '';
+      if (i === mark) cls += ' token';
+      cells += '<span class="map-cell' + cls + '"></span>';
+    }
+    var step = board.steps[Math.min(board.index, board.steps.length - 1)];
+    return '<div class="map-grid">' + cells + '</div>' +
+      '<p class="week-hint">Clue ' + Math.min(board.index + 1, board.steps.length) + ' of ' + board.steps.length + '</p>' +
+      (board.done
+        ? '<p class="lede">You reach the treasure chest.</p>'
+        : '<h2 class="question">' + esc(step.prompt) + '</h2><div class="choices grid-2">' + choiceRow(step.choices) + '</div>');
+  }
+
+  function renderSort() {
+    var card = board.cards[board.index];
+    var baskets = board.baskets.map(function (name) {
+      return '<button type="button" class="choice-btn" data-act="sort-basket" data-basket="' + esc(name) + '">' +
+        esc(name) + '</button>';
+    }).join('');
+    return '<p class="week-hint">' + esc(board.prompt.prompt) + '</p>' +
+      '<div class="sort-card">' + esc(card ? card.label : 'Done') + '</div>' +
+      (board.done ? '' : '<div class="choices">' + baskets + '</div>');
+  }
+
   function renderArray() {
     var rows = '';
-    var targetRows = board.rows;
     var r;
-    for (r = 0; r < targetRows; r++) {
+    for (r = 0; r < board.rows; r++) {
       var count = board.built[r] || 0;
       var dots = '';
       var d;
       for (d = 0; d < board.cols; d++) {
-        dots += '<i class="' + (d < count ? 'on' : '') + '"></i>';
+        var pop = board.pulse && board.pulse.row === r && board.pulse.col === d;
+        dots += '<i class="treat' + (d < count ? ' on' : '') + (pop ? ' pop' : '') + '"></i>';
       }
       rows += '<div class="array-row">' + dots + '</div>';
     }
-    return '<h2 class="question">' + esc(board.prompt.prompt) + '</h2>' +
-      '<div class="array-build" aria-hidden="true">' + rows + '</div>' +
+    var round = '<p class="week-hint">' + ((board.round || 0) + 1) + ' of ' + (board.goal || 1) + ' pets</p>';
+    var story = '<h2 class="question">' + esc(board.story || (board.prompt && board.prompt.prompt) || '') + '</h2>';
+    var pad = '<div class="array-build">' + rows + '</div>';
+    if (board.roundClear || board.done) {
+      var next = !board.done && PQBoards.arrayHasMore(board)
+        ? '<button type="button" class="btn primary" data-act="array-next">Next pet</button>'
+        : '';
+      return round + story + pad + '<p class="fact-banner">' + esc(board.fact || '') + '</p>' + next;
+    }
+    return round + story + pad +
       '<div class="array-actions">' +
-      '<button type="button" class="btn primary" data-act="array-act" data-array="dot">➕ Add a dot</button>' +
-      '<button type="button" class="btn secondary" data-act="array-act" data-array="row">➡️ Next row</button>' +
-      '<button type="button" class="btn secondary" data-act="array-act" data-array="back">⬅️ Take one back</button>' +
-      '<button type="button" class="btn secondary" data-act="array-act" data-array="check">✅ This is it</button>' +
+      '<button type="button" class="btn primary" data-act="array-act" data-array="dot">Add a treat</button>' +
+      '<button type="button" class="btn secondary" data-act="array-act" data-array="row">New row</button>' +
+      '<button type="button" class="btn secondary" data-act="array-act" data-array="back">Back one</button>' +
+      '<button type="button" class="btn secondary" data-act="array-act" data-array="check">This is it</button>' +
       '</div>';
   }
 
@@ -1782,6 +1988,10 @@
     else if (board.id === 'bingo') body = renderBingo();
     else if (board.id === 'memory') body = renderMemory();
     else if (board.id === 'array') body = renderArray();
+    else if (board.id === 'hide') body = renderHide();
+    else if (board.id === 'parade') body = renderParade();
+    else if (board.id === 'treasure') body = renderTreasure();
+    else if (board.id === 'sort') body = renderSort();
     var done = board.finished || board.done;
     app.innerHTML =
       headerBar(board.title, { back: true }) +
@@ -1796,14 +2006,20 @@
     if (!board || !result) return;
     if (result.needsContinue && board.id === 'memory') {
       board.hint = result.hint || '';
-      queueToast('gentle', result.message || 'Not a pair yet.', '', function () {
-        if (board && board.needsContinue) {
-          PQBoards.memoryContinue(board);
-          board.hint = '';
-          render();
-        }
-      });
+      queueToast('gentle', result.message || 'Not a pair yet.', '');
+      scheduleFlipBack('memory');
       PQAudio.play('gentle', state.soundOn);
+      save();
+      render();
+      return;
+    }
+    if (result.done && board.id === 'array' && PQBoards.arrayHasMore(board)) {
+      board.done = false;
+      board.roundClear = true;
+      board.fact = result.fact || board.fact;
+      board.hint = '';
+      queueToast('good', result.message || board.fact, '');
+      PQAudio.play('correct', state.soundOn);
       save();
       render();
       return;
@@ -1826,6 +2042,10 @@
       if (prize.mayDecor && Math.random() < 0.45) {
         var item = PQWorld.grantDecor(state, Math.random);
         if (item) extra = ' You found ' + item.name + ' to place.';
+      }
+      if (typeof PQCloset !== 'undefined') {
+        var cloth = PQCloset.grantFrom(state, 'game');
+        if (cloth) extra += ' ' + cloth.name + ' is in the closet.';
       }
       board.rewarded = true;
       board.banner = (result.message || 'Nice work.') + ' ' + prize.message + extra;
@@ -1875,6 +2095,18 @@
     } else {
       townSwipe = null;
     }
+    var pad = e.target.closest ? e.target.closest('.array-build') : null;
+    if (pad && screen === 'board' && board && board.id === 'array' && !board.done && !board.roundClear) {
+      e.preventDefault();
+      drag = {
+        kind: 'array',
+        pid: e.pointerId,
+        startX: e.clientX,
+        startY: e.clientY,
+        moved: false
+      };
+      return;
+    }
     var stage = e.target.closest ? e.target.closest('.room-stage') : null;
     if (!stage || screen !== 'house') return;
     var item = e.target.closest ? e.target.closest('.placed-item') : null;
@@ -1911,6 +2143,16 @@
 
   function onPointerMove(e) {
     if (!drag || e.pointerId !== drag.pid) return;
+    if (drag.kind === 'array') {
+      var adx = e.clientX - drag.startX;
+      var ady = e.clientY - drag.startY;
+      if (adx * adx + ady * ady > 64) {
+        drag.moved = true;
+        var pad = document.querySelector('.array-build');
+        if (pad) pad.classList.add('is-dragging');
+      }
+      return;
+    }
     var dx = e.clientX - drag.startX;
     var dy = e.clientY - drag.startY;
     if (!drag.moved && (dx * dx + dy * dy) < 64) return;
@@ -1940,6 +2182,19 @@
     if (!drag || (e.pointerId != null && e.pointerId !== drag.pid)) return;
     var info = drag;
     drag = null;
+    if (info.kind === 'array') {
+      var build = document.querySelector('.array-build');
+      if (build) build.classList.remove('is-dragging');
+      if (!board || board.id !== 'array') return;
+      var ax = e.clientX - info.startX;
+      var ay = e.clientY - info.startY;
+      ignoreClick = true;
+      setTimeout(function () { ignoreClick = false; }, 350);
+      if (Math.abs(ax) < 18 && Math.abs(ay) < 18) settleBoard(PQBoards.arrayAct(board, 'dot'));
+      else if (Math.abs(ay) > Math.abs(ax)) settleBoard(PQBoards.arrayAct(board, ay > 0 ? 'row' : 'back'));
+      else settleBoard(PQBoards.arrayAct(board, ax > 0 ? 'dot' : 'back'));
+      return;
+    }
     if (!info.moved) {
       pickedId = pickedId === info.id ? null : info.id;
       render();
@@ -2153,12 +2408,12 @@
     }
     if (act === 'open-board') {
       var gameId = t.getAttribute('data-game');
-      var allowed = PQBoards.forPlace(state, houseId);
+      var allowed = PQBoards.forPlace(state, houseId).concat(PQArcade.forPlace(state, houseId));
       var meta = null;
       var gi;
       for (gi = 0; gi < allowed.length; gi++) if (allowed[gi].id === gameId) meta = allowed[gi];
       if (!meta) return;
-      board = PQBoards.create(gameId, state, Math.random);
+      board = PQBoards.create(gameId, state, Math.random) || PQArcade.create(gameId, state, Math.random);
       boardEntry = '';
       if (!board) return;
       go('board');
@@ -2167,7 +2422,7 @@
     if (act === 'board-again') {
       if (!board) return;
       var againId = board.id;
-      board = PQBoards.create(againId, state, Math.random);
+      board = PQBoards.create(againId, state, Math.random) || PQArcade.create(againId, state, Math.random);
       boardEntry = '';
       go('board');
       return;
@@ -2222,6 +2477,109 @@
       settleBoard(PQBoards.arrayAct(board, t.getAttribute('data-array')));
       return;
     }
+    if (act === 'array-next') {
+      if (!board) return;
+      PQBoards.arrayAdvance(board, Math.random);
+      render();
+      return;
+    }
+    if (act === 'arcade-choice') {
+      if (!board) return;
+      settleBoard(PQArcade.answer(board, parseInt(t.getAttribute('data-idx'), 10), Math.random));
+      return;
+    }
+    if (act === 'sort-basket') {
+      if (!board) return;
+      settleBoard(PQArcade.answer(board, t.getAttribute('data-basket'), Math.random));
+      return;
+    }
+    if (act === 'seek-mode') {
+      if (!board || board.id !== 'hide') return;
+      PQArcade.setTogether(board, !board.withPet);
+      render();
+      return;
+    }
+    if (act === 'open-closet') {
+      closetTab = 'hat';
+      closetPage = 0;
+      houseId = houseId || 'pet';
+      go('closet');
+      return;
+    }
+    if (act === 'closet-tab') {
+      closetTab = t.getAttribute('data-slot') || 'hat';
+      closetPage = 0;
+      render();
+      return;
+    }
+    if (act === 'closet-page') {
+      closetPage = readPager(t, closetPage, 8);
+      render();
+      return;
+    }
+    if (act === 'wear') {
+      var worn = PQCloset.toggle(state, t.getAttribute('data-item'));
+      if (worn.ok) {
+        queueToast('good', worn.worn ? (worn.item.name + ' is on.') : (worn.item.name + ' is off.'), '');
+        save();
+      }
+      render();
+      return;
+    }
+    if (act === 'open-outside') {
+      houseId = houseId || 'pet';
+      go('outside');
+      return;
+    }
+    if (act === 'start-outing') {
+      var outingId = t.getAttribute('data-outing');
+      outingRun = PQOutings.create(outingId, state, Math.random);
+      if (!outingRun) return;
+      go('outing');
+      return;
+    }
+    if (act === 'outing-choice') {
+      if (!outingRun) return;
+      var stepResult = PQOutings.answer(outingRun, parseInt(t.getAttribute('data-idx'), 10), state, PQStorage.localDateKey());
+      outingRun.hint = stepResult.hint || '';
+      if (stepResult.done) {
+        outingRun.note = stepResult.message;
+        queueToast(stepResult.already ? 'gentle' : 'good', stepResult.message, '');
+        save();
+      } else if (!stepResult.ok) {
+        queueToast('gentle', stepResult.message || 'Not yet.', stepResult.hint || '');
+      }
+      render();
+      return;
+    }
+    if (act === 'outing-swing') {
+      if (!outingRun) return;
+      var swingResult = PQOutings.swing(outingRun, state, PQStorage.localDateKey());
+      outingRun.hint = swingResult.hint || '';
+      if (swingResult.done) {
+        outingRun.note = swingResult.message;
+        queueToast(swingResult.already ? 'gentle' : 'good', swingResult.message, '');
+        save();
+      } else if (!swingResult.ok) {
+        queueToast('gentle', swingResult.message || 'Not yet.', swingResult.hint || '');
+      }
+      render();
+      return;
+    }
+    if (act === 'outing-done') {
+      outingRun = null;
+      go('outside');
+      return;
+    }
+    if (act === 'shop-tab') {
+      shopTab = t.getAttribute('data-tab') === 'clothes' ? 'clothes' : 'room';
+      shopItemId = null;
+      shopProblem = null;
+      shopCoins = [];
+      shelfPage = 0;
+      render();
+      return;
+    }
     if (act === 'back') {
       if (screen === 'log') {
         var backTo = logFrom && logFrom !== 'log' ? logFrom : 'home';
@@ -2240,6 +2598,19 @@
       }
       if (screen === 'pick-pet') {
         go('welcome');
+        return;
+      }
+      if (screen === 'closet') {
+        go(houseId ? 'house' : 'home');
+        return;
+      }
+      if (screen === 'outing') {
+        outingRun = null;
+        go('outside');
+        return;
+      }
+      if (screen === 'outside') {
+        go(houseId ? 'house' : 'home');
         return;
       }
       if (screen === 'house') {
@@ -2633,7 +3004,8 @@
       return;
     }
     if (act === 'shop-item') {
-      var shelfItem = PQShop.itemById(t.getAttribute('data-item'));
+      var shelfId = t.getAttribute('data-item');
+      var shelfItem = shopTab === 'clothes' ? PQCloset.byId(shelfId) : PQShop.itemById(shelfId);
       if (!shelfItem) return;
       shopItemId = shelfItem.id;
       shopProblem = PQShop.problemFor(shelfItem, state.courses && state.courses.grade, Math.random);
@@ -2667,7 +3039,9 @@
       if (!shopItemId || !shopProblem) return;
       var payInput = { problem: shopProblem, coins: shopCoins.slice() };
       if (act === 'shop-value') payInput.value = t.getAttribute('data-value');
-      var bought = PQShop.buy(state, shopItemId, payInput, state.courses && state.courses.grade);
+      var bought = shopTab === 'clothes'
+        ? PQCloset.purchase(state, shopItemId, payInput, state.courses && state.courses.grade)
+        : PQShop.buy(state, shopItemId, payInput, state.courses && state.courses.grade);
       if (bought.ok) {
         shopNote = '';
         shopItemId = null;
@@ -2888,6 +3262,23 @@
     go('party-cards');
   }
 
+  function scheduleFlipBack(kind) {
+    if (flipTimer) clearTimeout(flipTimer);
+    flipTimer = setTimeout(function () {
+      flipTimer = null;
+      if (kind === 'memory' && board && board.needsContinue) {
+        PQBoards.memoryContinue(board);
+        board.hint = '';
+        if (screen === 'board') render();
+      }
+      if (kind === 'party' && cardDeck && cardNeedsContinue) {
+        PQParty.turnBack(cardDeck);
+        cardNeedsContinue = false;
+        if (screen === 'party-cards') render();
+      }
+    }, (PQBoards.FLIP_BACK_MS || PQParty.FLIP_BACK_MS || 1000));
+  }
+
   function flipPartyCard(index) {
     if (!cardDeck || !isFinite(index)) return;
     if (cardNeedsContinue) return;
@@ -2896,13 +3287,8 @@
     partyNote = '';
     cardNeedsContinue = !!result.needsContinue;
     if (result.needsContinue) {
-      queueToast('gentle', result.message || 'Not a pair.', '', function () {
-        if (cardDeck && cardNeedsContinue) {
-          PQParty.turnBack(cardDeck);
-          cardNeedsContinue = false;
-          render();
-        }
-      });
+      queueToast('gentle', result.message || 'Not a pair.', '');
+      scheduleFlipBack('party');
     } else if (result.cleared && !cardRewarded) {
       cardRewarded = true;
       var award = PQParty.finishCardRound(state, PQStorage.localDateKey());
@@ -3345,8 +3731,10 @@
     var openedPlaces = PQWorld.noteQuestFinished(state, PQStorage.localDateKey());
     freshPlace = openedPlaces && openedPlaces.length ? openedPlaces[0] : freshPlace;
     if (freshPlace) neighborhoodNote = freshPlace.openLine;
+    var questCloth = (typeof PQCloset !== 'undefined') ? PQCloset.grantFrom(state, 'quest') : null;
     var questNews = 'Quest complete. 12 coins go in the bank.';
     if (freshUnlock && freshUnlock.line) questNews += ' ' + freshUnlock.line;
+    if (questCloth && questCloth.name) questNews += ' ' + questCloth.name + ' is in the closet.';
     if (freshPlace && freshPlace.openLine) questNews += ' ' + freshPlace.openLine;
     queueToast('good', questNews, '');
     PQParty.offerParty(state, PQStorage.localDateKey());
@@ -3506,7 +3894,65 @@
       go('board');
       return;
     }
-    if (which === 'shop') {
+    if (which === 'memory-miss') {
+      state.courses.grade = 2;
+      state.courses.rank = 'explorer';
+      houseId = 'library';
+      board = PQBoards.create('memory', state, function () { return 0.2; });
+      PQBoards.flipMemory(board, 0);
+      var missAt = 1;
+      while (missAt < board.cards.length && board.cards[missAt].pair === board.cards[0].pair) missAt += 1;
+      PQBoards.flipMemory(board, missAt);
+      go('board');
+      return;
+    }
+    if (which === 'hide' || which === 'parade' || which === 'treasure' || which === 'sort') {
+      state.courses.grade = which === 'sort' ? 3 : 5;
+      state.courses.rank = PQStorage.rankFromGrade(state.courses.grade);
+      if (which === 'sort') {
+        state.courses.lessonFocus.reading = false;
+        state.courses.lessonFocus.multiplication = true;
+      }
+      houseId = which === 'hide' ? 'nature' : (which === 'parade' ? 'playground' : (which === 'treasure' ? 'museum' : 'market'));
+      board = PQArcade.create(which, state, function () { return 0.2; });
+      go('board');
+      return;
+    }
+    if (which === 'outing') {
+      state.courses.grade = 5;
+      state.courses.rank = 'champion';
+      houseId = 'pet';
+      outingRun = PQOutings.create('outing-hike', state, function () { return 0.2; });
+      go('outing');
+      return;
+    }
+    if (which === 'outside') {
+      houseId = 'pet';
+      go('outside');
+      return;
+    }
+    if (which === 'closet') {
+      PQCloset.ensure(state);
+      state.outfit.hat = 'hat-sunny';
+      state.outfit.scarf = 'scarf-red';
+      state.outfit.shoes = 'shoes-cloud';
+      closetTab = 'hat';
+      houseId = 'pet';
+      go('closet');
+      return;
+    }
+    if (which === 'town-outfit') {
+      PQCloset.ensure(state);
+      state.outfit.hat = 'hat-sunny';
+      state.outfit.scarf = 'scarf-red';
+      state.outfit.shoes = 'shoes-cloud';
+      homePane = 'map';
+      townPage = 0;
+      go('home');
+      return;
+    }
+    if (which === 'shop' || which === 'shop-clothes') {
+      shopTab = which === 'shop-clothes' ? 'clothes' : 'room';
       shopItemId = null;
       shopProblem = null;
       shopNote = '';
@@ -3551,11 +3997,28 @@
       go('party-cards');
       return;
     }
+    if (which === 'party-miss') {
+      cardDeck = PQParty.createCardDeck(function () { return 0.1; });
+      PQParty.flipCard(cardDeck, 0);
+      var cardAt = 1;
+      while (cardAt < cardDeck.length && cardDeck[cardAt].face === cardDeck[0].face) cardAt += 1;
+      PQParty.flipCard(cardDeck, cardAt);
+      cardNeedsContinue = true;
+      go('party-cards');
+      return;
+    }
     if (which === 'bank') {
       go('bank');
       return;
     }
     if (which === 'album') {
+      ['pet-sticker', 'friend-sticker', 'cottage-sticker', 'party-star-sticker'].forEach(function (id) {
+        if (!PQWorld.hasPrize(state, id)) {
+          var info = PQStickers.info(id);
+          PQWorld.grantPrize(state, { id: id, name: info ? info.name : 'a sticker', kind: 'sticker', once: true });
+        }
+      });
+      albumPage = 0;
       go('album');
       return;
     }

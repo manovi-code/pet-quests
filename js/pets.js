@@ -90,6 +90,12 @@
     else if (petId === 'owl') body = owlSvg(stage);
     else body = puppySvg(stage);
 
+    var clothes = '';
+    var closet = typeof globalThis !== 'undefined' ? globalThis.PQCloset : null;
+    if (opts.outfit && closet && closet.layers) {
+      clothes = closet.layers(petId, stage, opts.outfit);
+    }
+
     var title = opts.title ? '<title>' + escapeXml(opts.title) + '</title>' : '';
     var mood = opts.mood === 'happy' || opts.mood === 'cheer' ? opts.mood : 'calm';
     return (
@@ -102,6 +108,7 @@
       ') translate(-100 -110)">' +
       body +
       accessory +
+      clothes +
       moodLayer(mood) +
       '</g></svg>'
     );

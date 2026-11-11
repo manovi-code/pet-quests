@@ -1677,7 +1677,11 @@
       '<ellipse cx="168" cy="190" rx="48" ry="12" fill="#c4784a"/>' +
       '<polygon points="250,70 274,70 266,50" fill="#e8c84a"/>' + R(263, 70, 6, 16, '#a35f38') +
       R(118, 36, 40, 30, '#7a9a68', ' stroke="#a35f38" stroke-width="3"') +
-      '<circle cx="138" cy="50" r="6" fill="#e8c84a"/>';
+      '<circle cx="138" cy="50" r="6" fill="#e8c84a"/>' +
+      R(4, 96, 34, 74, '#8a5a3a', ' rx="3"') +
+      R(8, 100, 26, 66, '#c9956a') +
+      '<path d="M21 100 V166" stroke="#a35f38" stroke-width="1.5"/>' +
+      '<circle cx="30" cy="132" r="2.5" fill="#e8c84a"/>';
   }
 
   function interiorIdle(id) {
@@ -2172,6 +2176,8 @@
     noteQuestFinished: noteQuestFinished,
     hasPrize: hasPrize,
     grantPrize: grantPrize,
+    bonusUsedToday: bonusUsedToday,
+    markBonusUsed: markBonusUsed,
     actionsFor: actionsFor,
     playAction: playAction,
     tryPlaySurprise: tryPlaySurprise,
