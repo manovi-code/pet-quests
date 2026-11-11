@@ -69,6 +69,11 @@
       soundOn: true,
       tableStats: {},
       factStats: {},
+      // Recent multiplication and warmup facts, oldest first. A short ring
+      // so the same fact is not served again right away. Old saves omit this.
+      recentFacts: [],
+      // Missed facts waiting for a later retry in this session and the next day.
+      factDue: [],
       courses: {
         parts: {
           warmup: true,

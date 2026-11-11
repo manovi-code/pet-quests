@@ -189,96 +189,191 @@
     };
   }
 
+  function starPoints(cx, cy, r) {
+    var pts = [];
+    var i;
+    for (i = 0; i < 5; i++) {
+      var outer = -Math.PI / 2 + i * 2 * Math.PI / 5;
+      var inner = outer + Math.PI / 5;
+      pts.push((cx + Math.cos(outer) * r).toFixed(1) + ',' + (cy + Math.sin(outer) * r).toFixed(1));
+      pts.push((cx + Math.cos(inner) * (r * 0.42)).toFixed(1) + ',' + (cy + Math.sin(inner) * (r * 0.42)).toFixed(1));
+    }
+    return pts.join(' ');
+  }
+
+  function heartPath(cx, cy) {
+    return 'M' + cx + ' ' + (cy + 6) +
+      ' C' + (cx - 8) + ' ' + (cy + 1) + ' ' + (cx - 8) + ' ' + (cy - 6) + ' ' + (cx - 3.2) + ' ' + (cy - 6) +
+      ' C' + (cx - 1) + ' ' + (cy - 6) + ' ' + cx + ' ' + (cy - 3) + ' ' + cx + ' ' + (cy - 1.2) +
+      ' C' + cx + ' ' + (cy - 3) + ' ' + (cx + 1) + ' ' + (cy - 6) + ' ' + (cx + 3.2) + ' ' + (cy - 6) +
+      ' C' + (cx + 8) + ' ' + (cy - 6) + ' ' + (cx + 8) + ' ' + (cy + 1) + ' ' + cx + ' ' + (cy + 6) + ' Z';
+  }
+
   function drawLook(item) {
     var c = item.color || '#c4784a';
     var look = item.look;
+    var shape = '<g data-shape="' + look + '">';
+    var body = '';
     if (look === 'sunhat') {
-      return '<ellipse cx="0" cy="6" rx="26" ry="7" fill="' + c + '"/><path d="M-12 -2 Q0 -22 12 -2 Z" fill="' + c + '"/><ellipse cx="0" cy="-2" rx="12" ry="4" fill="#f0e0a0"/>';
+      body = '<ellipse cx="0" cy="8" rx="26" ry="6" fill="' + c + '"/>' +
+        '<path d="M-14 4 Q0 -20 14 4 Z" fill="' + c + '"/>' +
+        '<ellipse cx="0" cy="2" rx="14" ry="4" fill="#f0e0a0"/>' +
+        '<circle cx="0" cy="-8" r="5" fill="#e8c84a"/>' +
+        '<path d="M0 -16 V-2 M-6 -12 H6 M-5 -5 H5" stroke="#e8c84a" stroke-width="1.6"/>';
+    } else if (look === 'beanie') {
+      body = '<path d="M-16 8 Q-18 -8 0 -18 Q18 -8 16 8 Z" fill="' + c + '"/>' +
+        '<path d="M-10 -2 V8 M-4 -6 V8 M2 -6 V8 M8 -2 V8" stroke="#3d6b4f" stroke-width="1.4" opacity="0.7"/>' +
+        '<rect x="-16" y="4" width="32" height="7" rx="3" fill="#3d6b4f"/>' +
+        '<circle cx="0" cy="-18" r="4" fill="' + c + '"/>';
+    } else if (look === 'explorer') {
+      body = '<ellipse cx="0" cy="10" rx="28" ry="6" fill="' + c + '"/>' +
+        '<path d="M-14 8 Q-16 -12 0 -16 Q16 -12 14 8 Z" fill="#e8c49a"/>' +
+        '<rect x="-14" y="0" width="28" height="5" fill="#5c4030"/>' +
+        '<path d="M-6 -8 H6" stroke="#a35f38" stroke-width="1.4"/>';
+    } else if (look === 'flower') {
+      body = '<path d="M-18 8 Q0 -6 18 8" fill="none" stroke="#5f7a52" stroke-width="3"/>' +
+        '<circle cx="-14" cy="4" r="4" fill="' + c + '"/><circle cx="-14" cy="4" r="1.6" fill="#e8c84a"/>' +
+        '<circle cx="-4" cy="-2" r="4" fill="#f0a0c0"/><circle cx="-4" cy="-2" r="1.6" fill="#e8c84a"/>' +
+        '<circle cx="6" cy="-2" r="4" fill="' + c + '"/><circle cx="6" cy="-2" r="1.6" fill="#e8c84a"/>' +
+        '<circle cx="16" cy="4" r="4" fill="#f0a0c0"/><circle cx="16" cy="4" r="1.6" fill="#e8c84a"/>';
+    } else if (look === 'party') {
+      body = '<polygon points="0,-22 16,12 -16,12" fill="' + c + '"/>' +
+        '<path d="M-10 0 H10 M-12 6 H12" stroke="#e8c84a" stroke-width="2.4"/>' +
+        '<circle cx="0" cy="-22" r="4" fill="#e8c84a"/>' +
+        '<rect x="-16" y="10" width="32" height="4" fill="#e8c84a"/>';
+    } else if (look === 'crown') {
+      body = '<path d="M-20 10 L-20 -2 L-10 8 L0 -14 L10 8 L20 -2 L20 10 Z" fill="' + c + '" stroke="#a35f38" stroke-width="1.6"/>' +
+        '<path d="M-16 10 H16" stroke="#fffaf0" stroke-width="1.4"/>' +
+        '<circle cx="0" cy="2" r="2" fill="#d4564e"/><circle cx="-10" cy="6" r="1.4" fill="#8eb4c9"/><circle cx="10" cy="6" r="1.4" fill="#8eb4c9"/>';
+    } else if (look === 'round') {
+      body = '<circle cx="-13" cy="0" r="10" fill="#fffaf0" fill-opacity="0.72" stroke="' + c + '" stroke-width="3"/>' +
+        '<circle cx="13" cy="0" r="10" fill="#fffaf0" fill-opacity="0.72" stroke="' + c + '" stroke-width="3"/>' +
+        '<path d="M-3 0 H3" stroke="' + c + '" stroke-width="3"/>' +
+        '<path d="M-23 1 L-30 6 M23 1 L30 6" stroke="' + c + '" stroke-width="3"/>';
+    } else if (look === 'star') {
+      body = '<polygon points="' + starPoints(-13, 0, 12) + '" fill="#fff6d8" stroke="' + c + '" stroke-width="2.6"/>' +
+        '<polygon points="' + starPoints(13, 0, 12) + '" fill="#fff6d8" stroke="' + c + '" stroke-width="2.6"/>' +
+        '<path d="M-1 0 H1 M-25 2 L-31 7 M25 2 L31 7" stroke="' + c + '" stroke-width="2.6"/>';
+    } else if (look === 'sun') {
+      body = '<circle cx="-13" cy="0" r="8" fill="' + c + '"/>' +
+        '<circle cx="13" cy="0" r="8" fill="' + c + '"/>' +
+        '<path d="M-4 0 H4" stroke="#2c241c" stroke-width="2"/>' +
+        '<path d="M-13 -12 V-9 M-13 9 V12 M-23 0 H-20 M-6 0 H-3 M-20 -7 L-18 -5 M-8 -7 L-6 -5 M-20 7 L-18 5 M-8 7 L-6 5" stroke="#e8c84a" stroke-width="1.6"/>' +
+        '<path d="M13 -12 V-9 M13 9 V12 M3 0 H6 M20 0 H23 M6 -7 L8 -5 M18 -7 L20 -5 M6 7 L8 5 M18 7 L20 5" stroke="#e8c84a" stroke-width="1.6"/>';
+    } else if (look === 'heart') {
+      body = '<path d="' + heartPath(-13, -1) + '" fill="#ffd5df" stroke="' + c + '" stroke-width="2.8"/>' +
+        '<path d="' + heartPath(13, -1) + '" fill="#ffd5df" stroke="' + c + '" stroke-width="2.8"/>' +
+        '<path d="M-4 0 H4 M-24 2 L-31 8 M24 2 L31 8" stroke="' + c + '" stroke-width="2.8"/>';
+    } else if (look === 'square') {
+      body = '<rect x="-23" y="-9" width="18" height="16" rx="1" fill="#f3f7ef" stroke="' + c + '" stroke-width="3"/>' +
+        '<rect x="5" y="-9" width="18" height="16" rx="1" fill="#f3f7ef" stroke="' + c + '" stroke-width="3"/>' +
+        '<path d="M-5 0 H5 M-23 0 L-30 5 M23 0 L30 5" stroke="' + c + '" stroke-width="3"/>';
+    } else if (look === 'bow') {
+      body = '<path d="M0 0 L-20 -12 L-16 0 L-20 12 Z" fill="' + c + '"/>' +
+        '<path d="M0 0 L20 -12 L16 0 L20 12 Z" fill="' + c + '"/>' +
+        '<circle cx="0" cy="0" r="3.5" fill="#a35f38"/>';
+    } else if (look === 'polka') {
+      body = '<path d="M0 0 L-20 -12 L-16 0 L-20 12 Z" fill="' + c + '"/>' +
+        '<path d="M0 0 L20 -12 L16 0 L20 12 Z" fill="' + c + '"/>' +
+        '<circle cx="0" cy="0" r="3.5" fill="#a35f38"/>' +
+        '<circle cx="-10" cy="-4" r="1.7" fill="#fffaf0"/><circle cx="-8" cy="4" r="1.7" fill="#fffaf0"/>' +
+        '<circle cx="10" cy="-3" r="1.7" fill="#fffaf0"/><circle cx="8" cy="5" r="1.7" fill="#fffaf0"/>' +
+        '<circle cx="-14" cy="1" r="1.5" fill="#fffaf0"/><circle cx="14" cy="1" r="1.5" fill="#fffaf0"/>';
+    } else if (look === 'bandana') {
+      body = '<path d="M-22 -6 H22 L0 16 Z" fill="' + c + '"/>' +
+        '<path d="M-8 2 L-4 8 L0 2 L4 8 L8 2" fill="none" stroke="#fffaf0" stroke-width="1.4"/>' +
+        '<circle cx="-6" cy="6" r="1.3" fill="#fffaf0"/><circle cx="6" cy="6" r="1.3" fill="#fffaf0"/>';
+    } else if (look === 'ribbon') {
+      body = '<circle cx="0" cy="-2" r="5" fill="' + c + '"/>' +
+        '<circle cx="0" cy="-2" r="2" fill="#fffaf0"/>' +
+        '<path d="M-4 -2 L-16 -10 L-10 2 Z" fill="' + c + '"/>' +
+        '<path d="M4 -2 L16 -10 L10 2 Z" fill="' + c + '"/>' +
+        '<path d="M-3 2 L-8 16 M3 2 L8 16" stroke="' + c + '" stroke-width="3" stroke-linecap="round"/>';
+    } else if (look === 'scarf') {
+      body = '<path d="M-20 -4 Q0 -12 20 -4 L16 6 H-16 Z" fill="' + c + '"/>' +
+        '<path d="M-8 6 L-12 22 H-4 Z" fill="' + c + '"/>' +
+        '<path d="M6 6 L10 20 H2 Z" fill="' + c + '"/>' +
+        '<path d="M-16 0 H16" stroke="#fffaf0" stroke-width="1.5" opacity="0.8"/>';
+    } else if (look === 'stripe') {
+      body = '<path d="M-18 16 L-16 -2 L-8 -10 H8 L16 -2 L18 16 Z" fill="#fffaf0"/>' +
+        '<path d="M-8 -10 L-14 4 H-18 L-16 -2 Z" fill="#fffaf0"/>' +
+        '<path d="M8 -10 L14 4 H18 L16 -2 Z" fill="#fffaf0"/>' +
+        '<path d="M-16 2 H16 M-17 7 H17 M-17 12 H17" stroke="' + c + '" stroke-width="2.4"/>';
+    } else if (look === 'vest') {
+      body = '<path d="M-16 16 L-14 -6 H-6 L0 4 L6 -6 H14 L16 16 Z" fill="' + c + '"/>' +
+        '<path d="M-6 -6 L0 6 L6 -6" fill="#fffaf0"/>' +
+        '<circle cx="-4" cy="6" r="1.3" fill="#e8c84a"/><circle cx="4" cy="6" r="1.3" fill="#e8c84a"/><circle cx="0" cy="11" r="1.3" fill="#e8c84a"/>';
+    } else if (look === 'cape') {
+      body = '<path d="M-22 16 Q0 -4 22 16 L12 -8 H-12 Z" fill="' + c + '"/>' +
+        '<path d="M-12 -8 Q0 -16 12 -8" fill="#3d6b4f"/>' +
+        '<polygon points="' + starPoints(0, 4, 7) + '" fill="#e8c84a"/>';
+    } else if (look === 'leafcape') {
+      body = '<path d="M0 -16 Q22 4 0 18 Q-22 4 0 -16 Z" fill="' + c + '"/>' +
+        '<path d="M0 -12 V14 M0 0 L-8 4 M0 4 L8 8 M0 8 L-7 12" stroke="#e8c84a" stroke-width="1.4" fill="none"/>';
+    } else if (look === 'hoodie') {
+      body = '<path d="M-16 16 L-14 0 Q-18 -12 0 -16 Q18 -12 14 0 L16 16 Z" fill="' + c + '"/>' +
+        '<path d="M-8 -2 Q0 -10 8 -2 Q0 2 -8 -2 Z" fill="#fffaf0"/>' +
+        '<path d="M-6 8 H6" stroke="#fffaf0" stroke-width="2"/>' +
+        '<circle cx="-3" cy="12" r="1.2" fill="#fffaf0"/><circle cx="3" cy="12" r="1.2" fill="#fffaf0"/>';
+    } else if (look === 'starshirt') {
+      body = '<path d="M-16 16 L-14 -2 L-8 -10 H8 L14 -2 L16 16 Z" fill="' + c + '"/>' +
+        '<path d="M-8 -10 L-14 4 H-16 L-14 -2 Z M8 -10 L14 4 H16 L14 -2 Z" fill="' + c + '"/>' +
+        '<polygon points="' + starPoints(0, 4, 8) + '" fill="#e8c84a"/>';
+    } else if (look === 'cloud') {
+      body = '<path d="M-28 4 Q-26 -4 -20 -2 Q-18 -10 -12 -6 Q-8 -12 -2 -6 Q2 -10 6 -4 Q12 -8 14 2 Q8 8 -22 8 Q-28 8 -28 4 Z" fill="' + c + '" stroke="#d7d2cc"/>' +
+        '<path d="M2 4 Q4 -4 10 -2 Q12 -10 18 -6 Q22 -12 28 -4 Q32 -2 30 4 Q24 10 8 10 Q2 8 2 4 Z" fill="' + c + '" stroke="#d7d2cc"/>';
+    } else if (look === 'boots') {
+      body = '<path d="M-22 8 L-18 -12 H-8 L-6 4 H-2 L-4 8 Z" fill="' + c + '"/>' +
+        '<path d="M2 8 L4 -12 H14 L18 4 H22 L20 8 Z" fill="' + c + '"/>' +
+        '<path d="M-18 -4 H-8 M4 -4 H14" stroke="#5c4030" stroke-width="1.6"/>';
+    } else if (look === 'sandals') {
+      body = '<path d="M-22 6 Q-14 2 -6 6 L-8 10 H-20 Z" fill="' + c + '"/>' +
+        '<path d="M6 6 Q14 2 22 6 L20 10 H8 Z" fill="' + c + '"/>' +
+        '<path d="M-20 4 H-8 M-16 -2 V6 M8 4 H20 M14 -2 V6" stroke="' + c + '" stroke-width="2" fill="none"/>';
+    } else if (look === 'rain') {
+      body = '<path d="M-22 8 L-18 -16 H-8 L-6 8 Z" fill="' + c + '"/>' +
+        '<path d="M4 8 L6 -16 H16 L20 8 Z" fill="' + c + '"/>' +
+        '<path d="M-18 -8 H-8 M6 -8 H16" stroke="#fffaf0" stroke-width="2"/>' +
+        '<path d="M-26 -6 V2 M-24 4 V8 M24 -8 V-2 M26 0 V6" stroke="#8eb4c9" stroke-width="1.6"/>';
+    } else if (look === 'slippers') {
+      body = '<path d="M-24 6 Q-20 -2 -10 -2 Q-6 2 -6 8 H-22 Z" fill="' + c + '"/>' +
+        '<path d="M4 6 Q8 -2 18 -2 Q24 2 24 8 H6 Z" fill="' + c + '"/>' +
+        '<path d="M-20 2 Q-14 -4 -8 2 M8 2 Q14 -4 20 2" fill="none" stroke="#fffaf0" stroke-width="1.5"/>';
+    } else if (look === 'satchel') {
+      body = '<path d="M-8 -16 Q0 -22 8 -16" fill="none" stroke="#5c4030" stroke-width="2"/>' +
+        '<rect x="-14" y="-8" width="28" height="20" rx="3" fill="' + c + '"/>' +
+        '<path d="M-14 -2 H14 L10 6 H-10 Z" fill="#a35f38"/>' +
+        '<circle cx="0" cy="8" r="2" fill="#e8c84a"/>';
+    } else if (look === 'backpack') {
+      body = '<path d="M-10 -16 H-6 V-8 M10 -16 H6 V-8" fill="none" stroke="#3d6b4f" stroke-width="2.4"/>' +
+        '<rect x="-14" y="-10" width="28" height="26" rx="5" fill="' + c + '"/>' +
+        '<rect x="-8" y="-2" width="16" height="10" rx="2" fill="#e8c49a"/>' +
+        '<path d="M-14 -2 H-18 V16 M14 -2 H18 V16" fill="none" stroke="#3d6b4f" stroke-width="2"/>' +
+        '<circle cx="0" cy="12" r="1.6" fill="#e8c84a"/>';
+    } else if (look === 'bee') {
+      body = '<ellipse cx="0" cy="2" rx="4" ry="7" fill="#5c4030"/>' +
+        '<path d="M-2 -2 H2 M-2 2 H2 M-2 6 H2" stroke="#e8c84a" stroke-width="1.4"/>' +
+        '<ellipse cx="-12" cy="0" rx="10" ry="7" fill="' + c + '" opacity="0.9"/>' +
+        '<ellipse cx="12" cy="0" rx="10" ry="7" fill="' + c + '" opacity="0.9"/>' +
+        '<path d="M-16 -2 H-8 M8 -2 H16" stroke="#5c4030" stroke-width="1.2"/>';
+    } else if (look === 'bird') {
+      body = '<path d="M-2 0 Q-24 -16 -20 8 Q-12 2 -6 6 Q-10 -4 -2 0 Z" fill="' + c + '"/>' +
+        '<path d="M2 0 Q24 -16 20 8 Q12 2 6 6 Q10 -4 2 0 Z" fill="' + c + '"/>' +
+        '<path d="M-16 -6 Q-10 0 -14 6 M16 -6 Q10 0 14 6" fill="none" stroke="#8eb4c9" stroke-width="1.2"/>';
+    } else if (look === 'butterfly') {
+      body = '<path d="M0 -10 V12" stroke="#5c4030" stroke-width="2"/>' +
+        '<ellipse cx="-12" cy="-4" rx="11" ry="8" fill="' + c + '"/>' +
+        '<ellipse cx="12" cy="-4" rx="11" ry="8" fill="' + c + '"/>' +
+        '<ellipse cx="-10" cy="8" rx="8" ry="6" fill="#8eb4c9"/>' +
+        '<ellipse cx="10" cy="8" rx="8" ry="6" fill="#8eb4c9"/>' +
+        '<circle cx="-12" cy="-4" r="2" fill="#e8c84a"/><circle cx="12" cy="-4" r="2" fill="#e8c84a"/>' +
+        '<path d="M-2 -10 Q-6 -16 -2 -14 M2 -10 Q6 -16 2 -14" fill="none" stroke="#5c4030" stroke-width="1.2"/>';
+    } else {
+      body = '<circle cx="0" cy="0" r="8" fill="' + c + '"/>';
     }
-    if (look === 'beanie') {
-      return '<path d="M-16 8 Q-16 -16 0 -18 Q16 -16 16 8 Z" fill="' + c + '"/><rect x="-16" y="4" width="32" height="8" rx="3" fill="#3d6b4f"/>';
-    }
-    if (look === 'explorer') {
-      return '<ellipse cx="0" cy="8" rx="28" ry="7" fill="' + c + '"/><rect x="-12" y="-12" width="24" height="16" rx="4" fill="#e8c49a"/><rect x="-12" y="-2" width="24" height="5" fill="#5c4030"/>';
-    }
-    if (look === 'flower') {
-      return '<circle cx="0" cy="0" r="5" fill="#e8c84a"/><circle cx="-10" cy="0" r="6" fill="' + c + '"/><circle cx="10" cy="0" r="6" fill="' + c + '"/><circle cx="0" cy="-10" r="6" fill="' + c + '"/><circle cx="0" cy="10" r="6" fill="#f0a0c0"/>';
-    }
-    if (look === 'party') {
-      return '<polygon points="0,-20 14,12 -14,12" fill="' + c + '"/><circle cx="0" cy="-4" r="3" fill="#e8c84a"/><rect x="-16" y="10" width="32" height="5" fill="#e8c84a"/>';
-    }
-    if (look === 'crown') {
-      return '<path d="M-18 10 L-18 -2 L-8 6 L0 -12 L8 6 L18 -2 L18 10 Z" fill="' + c + '" stroke="#a35f38" stroke-width="1.5"/>';
-    }
-    if (look === 'round' || look === 'sun' || look === 'heart' || look === 'square' || look === 'star') {
-      var lens = look === 'sun' ? c : 'none';
-      var stroke = look === 'sun' ? '#2c241c' : c;
-      var shape = look === 'square'
-        ? '<rect x="-22" y="-10" width="16" height="14" fill="' + lens + '" stroke="' + stroke + '" stroke-width="2"/><rect x="6" y="-10" width="16" height="14" fill="' + lens + '" stroke="' + stroke + '" stroke-width="2"/>'
-        : '<circle cx="-12" cy="-2" r="9" fill="' + lens + '" stroke="' + stroke + '" stroke-width="2"/><circle cx="12" cy="-2" r="9" fill="' + lens + '" stroke="' + stroke + '" stroke-width="2"/>';
-      var extra = '';
-      if (look === 'star') extra = '<polygon points="0,-6 1.2,-2 5,-2 2,0 3,4 0,2 -3,4 -2,0 -5,-2 -1.2,-2" fill="' + c + '"/>';
-      if (look === 'heart') extra = '<path d="M0 6 L-4 2 Q-6 -1 -3 -1 Q0 -1 0 2 Q0 -1 3 -1 Q6 -1 4 2 Z" fill="' + c + '"/>';
-      return shape + '<path d="M-3 -2 H3" stroke="' + stroke + '" stroke-width="2"/>' + extra;
-    }
-    if (look === 'bow' || look === 'polka') {
-      var dots = look === 'polka' ? '<circle cx="-8" cy="-2" r="2" fill="#fffaf0"/><circle cx="8" cy="2" r="2" fill="#fffaf0"/>' : '';
-      return '<path d="M0 0 L-18 -10 L-18 10 Z" fill="' + c + '"/><path d="M0 0 L18 -10 L18 10 Z" fill="' + c + '"/><circle cx="0" cy="0" r="4" fill="#a35f38"/>' + dots;
-    }
-    if (look === 'bandana') {
-      return '<path d="M-20 -4 H20 L0 16 Z" fill="' + c + '"/>';
-    }
-    if (look === 'ribbon') {
-      return '<path d="M0 0 L-16 -8 L-10 2 Z" fill="' + c + '"/><path d="M0 0 L16 -8 L10 2 Z" fill="' + c + '"/><path d="M-4 2 L-8 16 M4 2 L8 16" stroke="' + c + '" stroke-width="3"/>';
-    }
-    if (look === 'scarf') {
-      return '<path d="M-18 -2 H18 L14 8 H-14 Z" fill="' + c + '"/><path d="M-6 8 L-10 22 H-2 Z" fill="' + c + '"/><path d="M4 8 L8 20 H0 Z" fill="' + c + '"/>';
-    }
-    if (look === 'stripe') {
-      return '<path d="M-18 14 L-14 -10 H14 L18 14 Z" fill="#fffaf0"/><path d="M-16 0 H16 M-17 6 H17" stroke="' + c + '" stroke-width="3"/>';
-    }
-    if (look === 'vest') {
-      return '<path d="M-16 16 L-12 -8 H12 L16 16 Z" fill="' + c + '"/><path d="M-4 -8 L0 8 L4 -8" fill="#fffaf0"/>';
-    }
-    if (look === 'cape') {
-      return '<path d="M-22 16 Q0 -8 22 16 L14 -6 H-14 Z" fill="' + c + '"/><polygon points="0,-12 2,-6 8,-6 3,-2 5,4 0,1 -5,4 -3,-2 -8,-6 -2,-6" fill="#e8c84a"/>';
-    }
-    if (look === 'leafcape') {
-      return '<path d="M-20 14 Q0 -12 20 14 L0 4 Z" fill="' + c + '"/><path d="M0 -6 V12" stroke="#e8c84a" stroke-width="1.5"/>';
-    }
-    if (look === 'hoodie') {
-      return '<path d="M-16 16 L-14 -2 Q0 -16 14 -2 L16 16 Z" fill="' + c + '"/><circle cx="0" cy="-4" r="6" fill="#fffaf0"/>';
-    }
-    if (look === 'starshirt') {
-      return '<path d="M-16 16 L-12 -8 H12 L16 16 Z" fill="' + c + '"/><polygon points="0,-4 1.4,0 6,0 2,3 3,8 0,5 -3,8 -2,3 -6,0 -1.4,0" fill="#e8c84a"/>';
-    }
-    if (look === 'cloud' || look === 'sandals' || look === 'slippers') {
-      var shoe = look === 'sandals'
-        ? '<ellipse cx="-12" cy="4" rx="8" ry="4" fill="none" stroke="' + c + '" stroke-width="2"/><ellipse cx="12" cy="4" rx="8" ry="4" fill="none" stroke="' + c + '" stroke-width="2"/>'
-        : '<ellipse cx="-12" cy="4" rx="9" ry="5" fill="' + c + '" stroke="#d7d2cc" stroke-width="1"/><ellipse cx="12" cy="4" rx="9" ry="5" fill="' + c + '" stroke="#d7d2cc" stroke-width="1"/>';
-      return shoe;
-    }
-    if (look === 'boots' || look === 'rain') {
-      var band = look === 'rain' ? '<path d="M-18 -2 H-6 M6 -2 H18" stroke="#fffaf0" stroke-width="2"/>' : '';
-      return '<path d="M-20 8 L-16 -10 H-6 L-4 8 Z" fill="' + c + '"/><path d="M4 8 L6 -10 H16 L20 8 Z" fill="' + c + '"/>' + band;
-    }
-    if (look === 'satchel') {
-      return '<rect x="-12" y="-8" width="24" height="20" rx="4" fill="' + c + '"/><path d="M-12 -2 H12" stroke="#fffaf0" stroke-width="2"/><circle cx="0" cy="4" r="2" fill="#e8c84a"/>';
-    }
-    if (look === 'backpack') {
-      return '<rect x="-12" y="-10" width="24" height="26" rx="5" fill="' + c + '"/><rect x="-8" y="-4" width="16" height="10" rx="2" fill="#e8c49a"/><path d="M-8 -10 V-16 H8 V-10" fill="none" stroke="#3d6b4f" stroke-width="2"/>';
-    }
-    if (look === 'bee') {
-      return '<ellipse cx="-12" cy="0" rx="10" ry="7" fill="' + c + '" opacity="0.85"/><ellipse cx="12" cy="0" rx="10" ry="7" fill="' + c + '" opacity="0.85"/><path d="M-16 -4 H-8 M8 -4 H16" stroke="#5c4030" stroke-width="1.2"/>';
-    }
-    if (look === 'bird') {
-      return '<path d="M-4 0 Q-22 -12 -18 8 Q-10 4 -4 2 Z" fill="' + c + '"/><path d="M4 0 Q22 -12 18 8 Q10 4 4 2 Z" fill="' + c + '"/>';
-    }
-    if (look === 'butterfly') {
-      return '<ellipse cx="-12" cy="-4" rx="10" ry="8" fill="' + c + '"/><ellipse cx="12" cy="-4" rx="10" ry="8" fill="' + c + '"/><ellipse cx="-10" cy="8" rx="7" ry="6" fill="#8eb4c9"/><ellipse cx="10" cy="8" rx="7" ry="6" fill="#8eb4c9"/>';
-    }
-    return '<circle cx="0" cy="0" r="8" fill="' + c + '"/>';
+    return shape + body + '</g>';
   }
+
 
   function placeOf(petId, stage, slot) {
     var base = {
@@ -295,7 +390,8 @@
     if (slot === 'shoes') y += Math.min(4, stage);
     if (petId === 'owl' && slot === 'hat') y -= stage;
     var scale = 1;
-    if (petId === 'owl' && slot === 'glasses') scale = 1.25;
+    if (slot === 'glasses') scale = Math.max(scale, 1.2);
+    if (petId === 'owl' && slot === 'glasses') scale = 1.35;
     if (petId === 'bunny' && slot === 'hat') scale = 0.82;
     if (petId === 'kitten' && slot === 'hat') scale = 0.9;
     return { x: pt[0], y: y, scale: scale };

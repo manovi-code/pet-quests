@@ -67,6 +67,7 @@
   var closetPage = 0;
   var shopTab = 'room';
   var outingRun = null;
+  var practiceBatch = [];
   var flipTimer = null;
   var logPage = 0;
   var notePage = 0;
@@ -957,11 +958,18 @@
     }
     var eyebrow = task.story
       ? 'Story problem'
-      : (task.type === 'add' ? 'Addition' : (task.type === 'sub' ? 'Subtraction' : 'Times tables'));
+      : (task.format === 'missing'
+        ? 'Missing number'
+        : (task.type === 'add' ? 'Addition' : (task.type === 'sub' ? 'Subtraction' : 'Times tables')));
+    var promptText = task.prompt || '';
+    var promptLine = (task.format === 'missing' || promptText.indexOf('=') !== -1 || promptText.indexOf('?') !== -1)
+      ? promptText
+      : (promptText + ' = ?');
+    var promptClass = promptLine.length > 18 ? 'prompt prompt-words' : 'prompt';
     return (
       '<section class="math-card">' +
       '<p class="eyebrow">' + eyebrow + '</p>' +
-      '<div class="prompt" aria-live="polite">' + esc(task.prompt) + ' = ?</div>' +
+      '<div class="' + promptClass + '" aria-live="polite">' + esc(promptLine) + '</div>' +
       '<div class="answer-display" aria-live="polite">' + (keypadValue || ' ') + '</div>' +
       hintBtn +
       renderKeypad() +
@@ -1021,8 +1029,34 @@
       '</main>';
   }
 
+  function bookList() {
+    return PQReading.libraryBooks(state.courses && state.courses.grade, PQPets.displayName(state));
+  }
+
+  function freshBookIndex(start) {
+    var books = bookList();
+    var used = state.readingUsedIds || [];
+    var n = books.length;
+    var i;
+    if (!n) return 0;
+    for (i = 0; i < n; i++) {
+      var idx = (start + i) % n;
+      if (used.indexOf(books[idx].id) === -1) return idx;
+    }
+    var best = start % n;
+    var bestAt = 9999;
+    for (i = 0; i < n; i++) {
+      var at = used.indexOf(books[i].id);
+      if (at >= 0 && at < bestAt) {
+        bestAt = at;
+        best = i;
+      }
+    }
+    return best;
+  }
+
   function currentBook() {
-    var books = PQReading.libraryBooks(state.courses && state.courses.grade, PQPets.displayName(state));
+    var books = bookList();
     if (!books.length) return null;
     if (bookIndex < 0) bookIndex = 0;
     bookIndex = bookIndex % books.length;
@@ -2867,7 +2901,9 @@
       var actionId = t.getAttribute('data-action');
       var chosen = findHouseAction(houseId, actionId);
       if (chosen && chosen.nav === 'library') {
-        bookIndex = 0;
+        bookIndex = freshBookIndex(0);
+        var openedBook = currentBook();
+        if (openedBook && PQReading.rememberRead) PQReading.rememberRead(state, openedBook.id);
         PQAudio.stopSpeak();
         go('library');
         return;
@@ -3135,7 +3171,11 @@
       return;
     }
     if (act === 'next-book') {
-      bookIndex += 1;
+      var leavingBook = currentBook();
+      if (leavingBook && PQReading.rememberRead) PQReading.rememberRead(state, leavingBook.id);
+      bookIndex = freshBookIndex(bookIndex + 1);
+      var nextBook = currentBook();
+      if (nextBook && PQReading.rememberRead) PQReading.rememberRead(state, nextBook.id);
       bookStep = 0;
       PQAudio.stopSpeak();
       render();
@@ -3404,6 +3444,9 @@
       var wasFirstTry = (task.missCount || 0) === 0;
       if (wasFirstTry) {
         PQMath.recordResult(state, task, true);
+        PQMath.clearRecheck(state, task);
+      } else if (task.type === 'mul') {
+        PQMath.noteSlow(state, task);
       }
       // If they missed earlier, the incorrect attempt was already recorded on first miss.
       var gain = wasFirstTry ? 2 : 1;
@@ -3439,18 +3482,26 @@
     // Record a single incorrect attempt on the first miss only
     if (task.missCount === 1) {
       PQMath.recordResult(state, task, false);
+      if (screen !== 'practice' && state.daily && state.daily.tasks) {
+        PQMath.plantRecheck(state.daily.tasks, state.daily.taskIndex || 0, state);
+      }
     }
     save();
     render();
   }
 
   function nextPracticeTask() {
+    var practiceOpts = PQQuest.mulOptionsForToday(state);
+    practiceOpts.allowMissing = true;
+    practiceOpts.state = state;
+    practiceOpts.petName = state.petName;
+    practiceOpts.batch = practiceBatch;
     return PQMath.makeMulTaskPreferWeakFacts(
       state.tableStats || {},
       state.factStats || {},
       Math.random,
       'practice',
-      PQQuest.mulOptionsForToday(state)
+      practiceOpts
     );
   }
 
@@ -3655,6 +3706,7 @@
     var activity = PQLearn.forPlace(state, houseId);
     if (!activity) return;
     learn = { activity: activity, progress: PQLearn.begin(activity), note: '', hint: '', pick: null };
+    if (activity.readId && PQReading.rememberRead) PQReading.rememberRead(state, activity.readId);
     go('learn');
   }
 
@@ -3939,6 +3991,37 @@
       closetTab = 'hat';
       houseId = 'pet';
       go('closet');
+      return;
+    }
+    if (which === 'closet-hearts') {
+      PQCloset.ensure(state);
+      PQCloset.ITEMS.forEach(function (item) { PQCloset.grant(state, item.id); });
+      state.outfit.hat = 'hat-flower';
+      state.outfit.glasses = 'glasses-heart';
+      state.outfit.scarf = 'scarf-polka';
+      state.outfit.shirt = 'shirt-star';
+      state.outfit.shoes = 'shoes-cloud';
+      state.outfit.pack = 'wings-butterfly';
+      closetTab = 'glasses';
+      closetPage = 0;
+      houseId = 'pet';
+      go('closet');
+      return;
+    }
+    if (which === 'town-hearts') {
+      PQCloset.ensure(state);
+      PQCloset.grant(state, 'glasses-heart');
+      state.petId = 'puppy';
+      state.petName = 'Pip';
+      state.outfit.hat = '';
+      state.outfit.glasses = 'glasses-heart';
+      state.outfit.scarf = '';
+      state.outfit.shirt = '';
+      state.outfit.shoes = '';
+      state.outfit.pack = '';
+      homePane = 'map';
+      townPage = 0;
+      go('home');
       return;
     }
     if (which === 'town-outfit') {

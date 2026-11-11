@@ -181,6 +181,7 @@
       focus: copyList(day.focus),
       review: copyList(day.review),
       introduced: copyList(day.introduced),
+      dayKey: PQStorage.localDateKey(now),
       lessonFocus: {
         addition: !!(courses.lessonFocus && courses.lessonFocus.addition),
         subtraction: !!(courses.lessonFocus && courses.lessonFocus.subtraction),
@@ -225,7 +226,9 @@
         grade: courses.grade,
         tableStats: state.tableStats || {},
         petName: state.petName,
-        idPrefix: 'mul'
+        idPrefix: 'mul',
+        state: state,
+        dayKey: plan.dayKey || ''
       }
     );
     var i;
@@ -272,10 +275,13 @@
     if (!any || full) {
       if (courses.parts.warmup) {
         var warmupN = opts.warmupCount != null ? opts.warmupCount : DEFAULTS.warmupCount;
+        var warmBatch = [];
         for (i = 0; i < warmupN; i++) {
           tasks.push(PQMath.makeAddSubTask(rng, 'warm-' + i, {
             grade: courses.grade,
-            petName: state.petName
+            petName: state.petName,
+            state: state,
+            batch: warmBatch
           }));
         }
         missions.push({ id: 'warmup', label: 'Warmup', count: warmupN });
@@ -317,13 +323,16 @@
         for (i = 0; i < plain.length; i++) counts[plain[i]] = share + (i < leftover ? 1 : 0);
       }
       var warmCount = 0;
+      var warmBatch = [];
       function addWarm(op, n) {
         var k;
         for (k = 0; k < n; k++) {
           tasks.push(PQMath.makeAddSubTask(rng, 'warm-' + warmCount, {
             grade: courses.grade,
             petName: state.petName,
-            op: op
+            op: op,
+            state: state,
+            batch: warmBatch
           }));
           warmCount += 1;
         }
@@ -356,14 +365,7 @@
   }
 
   function trackPassage(state, passageId) {
-    if (!passageId) return;
-    state.readingUsedIds = state.readingUsedIds || [];
-    if (state.readingUsedIds.indexOf(passageId) === -1) {
-      state.readingUsedIds.push(passageId);
-    }
-    if (state.readingUsedIds.length > 24) {
-      state.readingUsedIds = state.readingUsedIds.slice(-24);
-    }
+    if (PQReading.rememberRead) PQReading.rememberRead(state, passageId);
   }
 
   function untrackPassage(state, passageId) {

@@ -192,7 +192,9 @@
 
   function arraySteps(grade, rng, noun, placeNoun) {
     var pair = arrayPair(grade, rng);
-    var detail = pair.rows + ' ' + placeNoun + ' with ' + pair.each + ' ' + noun + ' in each.';
+    var detail = rng() < 0.5
+      ? (pair.rows + ' rows of ' + pair.each + ' ' + noun + '.')
+      : (pair.rows + ' ' + placeNoun + ' with ' + pair.each + ' ' + noun + ' in each.');
     var hint = grade <= 2
       ? ('Count the ' + noun + '. ' + pair.rows + ' groups of ' + pair.each + '.')
       : (pair.rows + ' × ' + pair.each + ' = ' + pair.answer + '.');

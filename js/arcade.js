@@ -161,17 +161,35 @@
       game.choices = [];
       return game;
     }
-    var spot = closed[Math.floor(rng() * closed.length) % closed.length];
+    var lastKey = game.ask ? (game.ask.a + '×' + game.ask.b) : '';
+    var pool = closed.filter(function (spot) {
+      return !lastKey || (spot.r + '×' + spot.c) !== lastKey;
+    });
+    if (!pool.length) pool = closed;
+    var spot = pool[Math.floor(rng() * pool.length) % pool.length];
     var a = spot.r;
     var b = spot.c;
     var useMul = game.useMul;
     var answer = useMul ? a * b : a + b;
     var sign = useMul ? '×' : '+';
+    var roll = rng();
+    var line;
+    if (!useMul) {
+      line = roll < 0.5
+        ? ('Row ' + a + ', column ' + b + '. What is ' + a + ' + ' + b + '?')
+        : ('Row ' + a + ' and column ' + b + '. How many is ' + a + ' and ' + b + ' more?');
+    } else if (roll < 0.34) {
+      line = 'Row ' + a + ', column ' + b + '. How many in ' + a + ' groups of ' + b + '?';
+    } else if (roll < 0.67) {
+      line = 'Skip-count ' + a + ' hops of ' + b + ' for row ' + a + ', column ' + b + '.';
+    } else {
+      line = 'Row ' + a + ', column ' + b + '. What is ' + b + ' × ' + a + '?';
+    }
     game.ask = { r: a, c: b, a: a, b: b, answer: answer, sign: sign };
     game.choices = numChoices(answer, rng);
     game.prompt = {
       type: useMul ? 'mul' : 'add',
-      prompt: 'Row ' + a + ', column ' + b + '. What is ' + a + ' ' + sign + ' ' + b + '?',
+      prompt: line,
       answer: answer,
       a: a,
       b: b
@@ -355,46 +373,57 @@
     return { ok: true, done: false, message: 'A pet joins the parade.', game: game };
   }
 
-  function trailLegs(grade, focus) {
+  function trailLegs(grade, focus, rng) {
+    rng = rng || Math.random;
     var mul = focus.multiplication !== false;
+    var bank;
     if (grade <= 1) {
-      return [
+      bank = [
         { a: 2, b: 1, op: 'add', read: 'The note says two steps and one more.' },
         { a: 3, b: 1, op: 'add', read: 'You see three stones and one extra pebble.' },
         { a: 4, b: 2, op: 'sub', read: 'Four marks, then two are already counted.' },
-        { a: 2, b: 2, op: 'add', read: 'Two nests and two more steps.' }
+        { a: 2, b: 2, op: 'add', read: 'Two nests and two more steps.' },
+        { a: 3, b: 2, op: 'add', read: 'Three prints and two more steps.' },
+        { a: 2, b: 1, op: 'add', read: 'Two stones and one extra step.' }
       ];
-    }
-    if (!mul || grade === 2) {
-      return [
+    } else if (!mul || grade === 2) {
+      bank = [
         { a: 4, b: 2, op: 'add', read: 'The note says four steps and two more.' },
         { a: 5, b: 1, op: 'sub', read: 'Five dots, and one is the start.' },
         { a: 3, b: 2, op: 'add', read: 'Three leaves and two twigs mark the path.' },
-        { a: 3, b: 1, op: 'add', read: 'Three steps and one more to the next mark.' }
+        { a: 3, b: 1, op: 'add', read: 'Three steps and one more to the next mark.' },
+        { a: 4, b: 3, op: 'add', read: 'Four leaves and three more steps.' },
+        { a: 6, b: 2, op: 'sub', read: 'Six marks, then two steps are already counted.' }
       ];
-    }
-    if (grade === 3) {
-      return [
+    } else if (grade === 3) {
+      bank = [
         { a: 2, b: 2, op: 'mul', read: 'The note says 2 rows of 2 steps.' },
         { a: 2, b: 3, op: 'mul', read: 'You read 2 groups of 3 steps.' },
         { a: 3, b: 2, op: 'mul', read: '3 nests with 2 steps beside each nest.' },
-        { a: 2, b: 1, op: 'mul', read: '2 lines with 1 step left on each.' }
+        { a: 2, b: 1, op: 'mul', read: '2 lines with 1 step left on each.' },
+        { a: 4, b: 2, op: 'mul', read: '4 rows of 2 steps on the map.' },
+        { a: 3, b: 3, op: 'mul', read: '3 nests with 3 steps beside each.' }
       ];
-    }
-    if (grade === 4) {
-      return [
+    } else if (grade === 4) {
+      bank = [
         { a: 3, b: 2, op: 'mul', read: 'The map says 3 groups of 2 steps.' },
         { a: 4, b: 2, op: 'mul', read: '4 trees with 2 steps between the marks.' },
         { a: 2, b: 2, op: 'mul', read: '2 bridges with 2 steps each.' },
-        { a: 2, b: 1, op: 'mul', read: '2 last steps, 1 on each side of the chest.' }
+        { a: 2, b: 1, op: 'mul', read: '2 last steps, 1 on each side of the chest.' },
+        { a: 3, b: 4, op: 'mul', read: '3 posts with 4 steps between them.' },
+        { a: 5, b: 2, op: 'mul', read: '5 pairs of steps along the wall.' }
+      ];
+    } else {
+      bank = [
+        { a: 4, b: 2, op: 'mul', read: 'The note says 4 pairs of steps.' },
+        { a: 3, b: 2, op: 'mul', read: '3 nests with 2 steps by each nest.' },
+        { a: 2, b: 2, op: 'mul', read: '2 short rows of 2 steps.' },
+        { a: 2, b: 1, op: 'mul', read: '2 final steps, 1 at a time, up to the chest.' },
+        { a: 4, b: 3, op: 'mul', read: '4 rows of 3 steps on the map.' },
+        { a: 6, b: 2, op: 'mul', read: '6 hops of 2 steps to the chest.' }
       ];
     }
-    return [
-      { a: 4, b: 2, op: 'mul', read: 'The note says 4 pairs of steps.' },
-      { a: 3, b: 2, op: 'mul', read: '3 nests with 2 steps by each nest.' },
-      { a: 2, b: 2, op: 'mul', read: '2 short rows of 2 steps.' },
-      { a: 2, b: 1, op: 'mul', read: '2 final steps, 1 at a time, up to the chest.' }
-    ];
+    return shuffle(bank, rng).slice(0, 4);
   }
 
   function legAnswer(leg) {
@@ -422,7 +451,7 @@
   function createTreasure(state, rng) {
     var grade = gradeOf(state);
     var focus = focusOf(state);
-    var legs = trailLegs(grade, focus);
+    var legs = trailLegs(grade, focus, rng);
     var steps = [];
     var total = 0;
     var i;

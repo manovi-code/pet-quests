@@ -152,7 +152,9 @@
       grade: grade,
       tableStats: (state && state.tableStats) || {},
       dayIndex: 3,
-      deferStory: true
+      deferStory: true,
+      state: state || null,
+      petName: state && state.petName
     };
   }
 
@@ -163,7 +165,22 @@
     return READ_RICH;
   }
 
-  function readingPrompt(grade, rng) {
+  function readingPrompt(grade, rng, state) {
+    if (typeof PQReading !== 'undefined' && PQReading.pickShort) {
+      var used = (state && state.readingUsedIds) || [];
+      var picked = PQReading.pickShort(used, rng, grade);
+      if (picked) {
+        if (state && PQReading.rememberRead) PQReading.rememberRead(state, picked.id);
+        return {
+          type: 'read',
+          prompt: picked.q,
+          choices: picked.choices.slice(),
+          answer: picked.answer,
+          hint: picked.hint,
+          task: null
+        };
+      }
+    }
     var bank = readBank(grade);
     var row = bank[Math.floor(rng() * bank.length) % bank.length];
     return {
@@ -180,7 +197,7 @@
     var focus = focusOf(state);
     var kind = pickKind(focus, rng, allowRead);
     var grade = gradeOf(state);
-    if (kind === 'read') return readingPrompt(grade, rng);
+    if (kind === 'read') return readingPrompt(grade, rng, state);
     if (kind === 'add' || kind === 'sub') {
       var task = PQMath.makeAddSubTask(rng, 'board', { grade: grade, op: kind });
       return {
@@ -625,14 +642,20 @@
       return;
     }
     var cell = open[Math.floor(rng() * open.length) % open.length];
+    var roll = rng();
+    var said = cell.a + ' × ' + cell.b;
+    if (roll < 0.25) said = cell.a + ' equal groups of ' + cell.b;
+    else if (roll < 0.5) said = cell.a + ' rows of ' + cell.b;
+    else if (roll < 0.75) said = 'Skip-count ' + cell.a + ' hops of ' + cell.b;
+    else if (roll < 0.9) said = cell.b + ' × ' + cell.a;
     game.prompt = {
       type: 'mul',
-      prompt: cell.a + ' × ' + cell.b,
+      prompt: said,
       answer: cell.answer,
       a: cell.a,
       b: cell.b,
       choices: null,
-      task: { type: 'mul', a: cell.a, b: cell.b, answer: cell.answer, prompt: cell.a + ' × ' + cell.b }
+      task: { type: 'mul', a: cell.a, b: cell.b, answer: cell.answer, prompt: said }
     };
     game.misses = 0;
   }
