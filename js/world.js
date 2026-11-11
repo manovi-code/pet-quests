@@ -1713,7 +1713,7 @@
     opts = opts || {};
     var scene = sceneFor(houseId || 'pet');
     var placed = opts.bare ? '' : renderPlaced(state, houseId);
-    return '<svg class="room-svg" viewBox="0 0 320 210" width="100%" height="100%" aria-hidden="true">' +
+    return '<svg class="room-svg" viewBox="0 0 320 210" width="100%" preserveAspectRatio="xMidYMid meet" aria-hidden="true">' +
       scene + interiorIdle(houseId || 'pet') + placed + '</svg>';
   }
 

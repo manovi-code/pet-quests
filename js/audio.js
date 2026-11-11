@@ -66,18 +66,29 @@
     }
   }
 
-  function speak(text, soundOn) {
-    if (!soundOn) return false;
-    if (typeof window === 'undefined' || !window.speechSynthesis) return false;
+  function speak(text, soundOn, onEnd) {
+    if (!soundOn || typeof window === 'undefined' || !window.speechSynthesis) {
+      if (onEnd) onEnd();
+      return false;
+    }
     try {
       window.speechSynthesis.cancel();
       var u = new SpeechSynthesisUtterance(String(text));
+      var finished = false;
+      function done() {
+        if (finished) return;
+        finished = true;
+        if (onEnd) onEnd();
+      }
       u.rate = 0.92;
       u.pitch = 1.05;
       u.volume = 0.9;
+      u.onend = done;
+      u.onerror = done;
       window.speechSynthesis.speak(u);
       return true;
     } catch (e) {
+      if (onEnd) onEnd();
       return false;
     }
   }

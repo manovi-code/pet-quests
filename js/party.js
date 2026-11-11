@@ -169,7 +169,7 @@
     if (up.length >= 2) {
       return {
         cards: cards,
-        message: 'Tap try again to turn those two cards over.',
+        message: 'Those two will turn back in a moment.',
         changed: false,
         needsContinue: true,
         cleared: false
