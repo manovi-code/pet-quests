@@ -637,7 +637,13 @@ test('story-math numbers honor grade caps', function () {
   mulQuest.tasks.forEach(function (t) {
     assert.strictEqual(t.a, 2, 'turned-off or above-grade tables stay out, got ' + t.a);
     assert.ok(t.b >= 1 && t.b <= 5);
-    assert.strictEqual(t.answer, t.a * t.b);
+    if (t.format === 'missing') {
+      assert.ok(t.answer === t.a || t.answer === t.b, 'missing factor answer');
+      assert.ok(t.prompt.indexOf('___') !== -1);
+      assert.strictEqual(t.story, null);
+    } else {
+      assert.strictEqual(t.answer, t.a * t.b);
+    }
     if (t.story) {
       sawStory = true;
       assert.ok(hasWholeNumber(t.story.text, t.a));
@@ -1787,7 +1793,8 @@ test('app wires notices to a 3 second toast and pauses for read-aloud', function
   assert.ok(app.indexOf('notices.pause()') !== -1);
   assert.ok(app.indexOf('notices.resume()') !== -1);
   assert.ok(app.indexOf('NOTICE_MS') !== -1);
-  assert.ok(sw.indexOf('pet-quests-shell-6') !== -1);
+  assert.ok(sw.indexOf('pet-quests-shell-7') !== -1);
+  assert.ok(sw.indexOf('./js/more-reading.js') !== -1);
   assert.ok(sw.indexOf('./js/stickers.js') !== -1);
   assert.ok(sw.indexOf('./js/closet.js') !== -1);
   assert.ok(sw.indexOf('./js/outings.js') !== -1);
@@ -2074,6 +2081,206 @@ test('card mismatches stay face up until they are turned back', function () {
 
   var app = fs.readFileSync(path.join(root, 'app.js'), 'utf8');
   assert.ok(app.split('scheduleFlipBack(').length >= 3);
+});
+
+test('multiplication facts do not repeat back to back in a session', function () {
+  var state = PQStorage.defaultState();
+  state.courses.grade = 5;
+  state.courses.rank = 'champion';
+  var batch = [];
+  var keys = [];
+  var i;
+  for (i = 0; i < 12; i++) {
+    var task = PQMath.makeMulTaskPreferWeakFacts(state.tableStats, state.factStats, lcg(30 + i), 'm' + i, {
+      grade: 5,
+      pool: [2, 3, 4, 5, 6, 7, 8, 9],
+      dayIndex: 4,
+      state: state,
+      batch: batch
+    });
+    var key = PQMath.factKey(task.a, task.b, '×');
+    if (keys.length) assert.notStrictEqual(key, keys[keys.length - 1], key);
+    keys.push(key);
+  }
+  var uniq = {};
+  keys.forEach(function (key) { uniq[key] = true; });
+  assert.strictEqual(Object.keys(uniq).length, keys.length);
+});
+
+test('about half of multiplication items come from weak facts', function () {
+  var stats = {};
+  var facts = {};
+  var t;
+  var b;
+  for (t = 2; t <= 9; t++) {
+    stats[String(t)] = { attempts: 12, correct: 11 };
+    for (b = 1; b <= 12; b++) {
+      var key = PQMath.factKey(t, b, '×');
+      facts[key] = { attempts: 8, correct: 8, misses: 0, slow: 0 };
+    }
+  }
+  facts['4×7'] = { attempts: 8, correct: 2, misses: 6, slow: 1 };
+  facts['6×8'] = { attempts: 8, correct: 3, misses: 5, slow: 2 };
+  facts['3×9'] = { attempts: 6, correct: 2, misses: 4, slow: 1 };
+  var weakKeys = { '4×7': true, '6×8': true, '3×9': true };
+  var weakN = 0;
+  var i;
+  for (i = 0; i < 200; i++) {
+    var task = PQMath.makeMulTaskPreferWeakFacts(stats, facts, lcg(80 + i), 'w' + i, {
+      grade: 5,
+      pool: [2, 3, 4, 5, 6, 7, 8, 9],
+      dayIndex: 4,
+      tableStats: stats
+    });
+    if (weakKeys[PQMath.factKey(task.a, task.b, '×')]) weakN += 1;
+  }
+  assert.ok(weakN / 200 >= 0.36 && weakN / 200 <= 0.62, 'weak share ' + weakN);
+});
+
+test('a missed fact is queued for later and the next day', function () {
+  var state = PQStorage.defaultState();
+  state.daily = { dateKey: '2026-11-10', tasks: [], taskIndex: 0 };
+  var tasks = [];
+  var i;
+  for (i = 0; i < 8; i++) {
+    tasks.push({ id: 'm' + i, type: 'mul', mission: 'multiply', a: 2, b: i + 1, answer: 2 * (i + 1), prompt: '2 × ' + (i + 1), missCount: 0 });
+  }
+  tasks[1].a = 4;
+  tasks[1].b = 6;
+  tasks[1].answer = 24;
+  PQMath.recordResult(state, tasks[1], false);
+  assert.ok(state.factStats['4×6'].misses >= 1);
+  var planted = PQMath.plantRecheck(tasks, 1, state);
+  assert.ok(planted);
+  assert.ok(planted.a === 4 && planted.b === 6);
+  assert.ok(state.factDue.some(function (item) { return item.key === '4×6'; }));
+  state.daily.dateKey = '2026-11-11';
+  state.courses.grade = 5;
+  state.courses.rank = 'champion';
+  state.courses.tables = [4, 6];
+  state.tableStats['4'] = { attempts: 8, correct: 7 };
+  state.tableStats['6'] = { attempts: 8, correct: 7 };
+  var quest = PQQuest.generateDailyQuest(state, lcg(4), { now: new Date(2026, 10, 11, 12, 0, 0) });
+  var saw = quest.tasks.some(function (task) {
+    return task.type === 'mul' && PQMath.factKey(task.a, task.b, '×') === '4×6';
+  });
+  assert.ok(saw, 'missed fact returns the next day');
+});
+
+function readingBandCounts() {
+  function words(text) { return String(text).trim().split(/\s+/).length; }
+  var counts = { scout: 0, explorer: 0, ranger: 0, keeper: 0, champion: 0, books: {} };
+  PQReading.PASSAGES.forEach(function (p) {
+    if (p.level === 1 && words(p.text) <= 28 && p.words && p.words.length && p.text.indexOf('\n\n') === -1) counts.scout += 1;
+    if (p.level === 1 && words(p.text) > 28) counts.explorer += 1;
+    if (p.level === 2) counts.ranger += 1;
+    if (p.level === 3 && p.text.indexOf('\n\n') === -1) counts.keeper += 1;
+    if (p.level === 3 && p.text.indexOf('\n\n') !== -1) counts.champion += 1;
+  });
+  PQReading.LIBRARY_BOOKS.forEach(function (book) {
+    counts.books[book.level] = (counts.books[book.level] || 0) + 1;
+  });
+  return counts;
+}
+
+test('reading content is at least triple per rank', function () {
+  var counts = readingBandCounts();
+  assert.ok(counts.scout >= 12, 'scout ' + counts.scout);
+  assert.ok(counts.explorer >= 9, 'explorer ' + counts.explorer);
+  assert.ok(counts.ranger >= 39, 'ranger ' + counts.ranger);
+  assert.ok(counts.keeper >= 12, 'keeper ' + counts.keeper);
+  assert.ok(counts.champion >= 18, 'champion ' + counts.champion);
+  assert.ok(counts.books[1] >= 9 && counts.books[2] >= 6 && counts.books[3] >= 9);
+  assert.ok(PQReading.shortReads(1).length >= 8);
+  assert.ok(PQReading.shortReads(3).length >= 8);
+  assert.ok(PQReading.shortReads(5).length >= 8);
+  var skills = {};
+  PQReading.PASSAGES.forEach(function (p) {
+    (p.questions || []).forEach(function (q) {
+      if (q.skill) skills[q.skill] = true;
+    });
+  });
+  assert.ok(skills.detail && skills.sequence && skills.vocabulary && skills.main && skills.inference);
+});
+
+test('recent passages are skipped while others remain', function () {
+  var grade;
+  for (grade = 1; grade <= 5; grade++) {
+    var sample = PQReading.pickPassage([], lcg(grade), { grade: grade });
+    var used = [sample.id];
+    var i;
+    for (i = 0; i < 8; i++) {
+      var next = PQReading.pickPassage(used, lcg(20 + grade * 10 + i), { grade: grade });
+      assert.ok(used.indexOf(next.id) === -1, 'grade ' + grade + ' repeated ' + next.id);
+    }
+  }
+  var state = PQStorage.defaultState();
+  PQReading.rememberRead(state, 'r01');
+  PQReading.rememberRead(state, 'r02');
+  assert.deepStrictEqual(state.readingUsedIds.slice(-2), ['r01', 'r02']);
+  PQReading.rememberRead(state, 'r01');
+  assert.strictEqual(state.readingUsedIds[state.readingUsedIds.length - 1], 'r01');
+});
+
+test('old saves gain fact memory without wiping the pet', function () {
+  assert.strictEqual(PQStorage.SCHEMA_VERSION, 1);
+  assert.strictEqual(PQStorage.STORAGE_KEY, 'petquests_v1');
+  var mem = {};
+  var raw = {
+    getItem: function (k) { return Object.prototype.hasOwnProperty.call(mem, k) ? mem[k] : null; },
+    setItem: function (k, v) { mem[k] = String(v); },
+    removeItem: function (k) { delete mem[k]; }
+  };
+  var s = PQStorage.createStore(raw);
+  mem[s.STORAGE_KEY] = JSON.stringify({
+    version: 1,
+    onboardingDone: true,
+    petId: 'puppy',
+    petName: 'Scout',
+    growthStage: 1,
+    growthPoints: 12,
+    tableStats: { '6': { attempts: 4, correct: 3 } },
+    factStats: { '4×6': { attempts: 2, correct: 1 } },
+    courses: { grade: 3, tables: [2, 4, 6], parts: { warmup: true, reading: true, multiply: true } },
+    world: { unlocks: ['pet-bowl'], places: ['library'] },
+    readingUsedIds: ['r01']
+  });
+  var loaded = s.load();
+  assert.strictEqual(loaded.version, 1);
+  assert.strictEqual(loaded.petId, 'puppy');
+  assert.strictEqual(loaded.petName, 'Scout');
+  assert.strictEqual(loaded.growthPoints, 12);
+  assert.strictEqual(loaded.tableStats['6'].correct, 3);
+  assert.strictEqual(loaded.factStats['4×6'].attempts, 2);
+  assert.ok(Array.isArray(loaded.recentFacts) && loaded.recentFacts.length === 0);
+  assert.ok(Array.isArray(loaded.factDue) && loaded.factDue.length === 0);
+  assert.deepStrictEqual(loaded.readingUsedIds, ['r01']);
+  assert.ok(loaded.world.places.indexOf('library') !== -1);
+  var quest = PQQuest.generateDailyQuest(loaded, lcg(6), { now: new Date(2026, 10, 4, 12, 0, 0) });
+  assert.ok(quest.tasks.length > 0);
+  assert.strictEqual(loaded.petName, 'Scout');
+});
+
+test('closet art matches the item name', function () {
+  assert.strictEqual(PQCloset.ITEMS.length, 33);
+  PQCloset.ITEMS.forEach(function (item) {
+    var svg = PQCloset.icon(item);
+    assert.ok(svg.indexOf('data-shape="' + item.look + '"') !== -1, item.id);
+  });
+  var heart = PQCloset.icon(PQCloset.byId('glasses-heart'));
+  var star = PQCloset.icon(PQCloset.byId('glasses-star'));
+  var square = PQCloset.icon(PQCloset.byId('glasses-square'));
+  var round = PQCloset.icon(PQCloset.byId('glasses-round'));
+  var cloud = PQCloset.icon(PQCloset.byId('shoes-cloud'));
+  assert.ok(heart.indexOf('<path') !== -1);
+  assert.ok(!/<circle /.test(heart), 'heart lenses are hearts');
+  assert.ok(star.indexOf('<polygon') !== -1);
+  assert.ok(!/<circle /.test(star), 'star lenses are stars');
+  assert.ok(square.indexOf('<rect') !== -1);
+  assert.ok(round.indexOf('<circle') !== -1);
+  assert.ok(cloud.indexOf('Q') !== -1);
+  var worn = PQCloset.layers('puppy', 1, { hat: '', glasses: 'glasses-heart', scarf: '', shirt: '', shoes: '', pack: '' });
+  assert.ok(worn.indexOf('data-shape="heart"') !== -1);
 });
 
 if (!process.env.SKIP_FIT) {

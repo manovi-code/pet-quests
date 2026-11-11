@@ -48,6 +48,60 @@
     return easy;
   }
 
+  var ALT_READS = {
+    zoo: [
+      'A turtle rests on a warm rock. A bee visits the flowers. Each animal stays near the home that fits.',
+      'The rabbit nibbles leaves by a low log. The duck stays on the pond. A keeper fills the water and steps back.',
+      'Watch the habitat before you guess. Leaves are rabbit food. Wide feet help a duck paddle. You are looking, not taking a test.'
+    ],
+    vet: [
+      'Ears help an animal hear. A nose helps an animal smell. A water bowl helps a body feel ready.',
+      'A heart beats to move blood. Lungs bring in air. This room is for learning how bodies work.',
+      'Fur or feathers can keep an animal warm. Strong legs help a rabbit hop. You are learning jobs, not deciding care.'
+    ],
+    police: [
+      'A pet is waiting by the desk. Match a color or a soft ear to a friend. The helpers are kind.',
+      'Read each clue, then match it to a friend. A red collar, a blue bandana, or long ears. Nobody is in trouble.',
+      'The helpers wrote calm clues so a pet can head home. Match the clue, stack the card, and wash your paws. There is no rush.'
+    ],
+    pond: [
+      'Two ducks glide. One frog sits on a stone. Count only what you came to see.',
+      'Two ducks leave a soft line on the water. A frog stays on a warm stone. You can just watch.',
+      'Reeds lean over the pond. Two ducks keep swimming and one frog does not jump. Nothing here is a race.'
+    ],
+    museum: [
+      'A leaf fossil is in a frame. A blue vase sits on a stand. A bench is there if you want to rest.',
+      'The leaf fossil hangs on the left wall. The blue vase has a painted wave. The bench faces the pictures.',
+      'Look as long as you like. The fossil is a leaf in stone. The vase is blue. The bench is for resting, and nothing is a test.'
+    ]
+  };
+
+  function applyReading(state, activity, level) {
+    if (!activity || !activity.reading) return activity;
+    var alts = ALT_READS[activity.id];
+    var used = (state && state.readingUsedIds) || [];
+    var baseId = activity.id + '-read-' + level;
+    if (alts && alts.length) {
+      var i;
+      var band = level <= 2 ? 0 : (level === 3 ? 1 : 2);
+      var order = [band];
+      if (alts[band] == null) order = [0];
+      for (i = 0; i < alts.length; i++) if (order.indexOf(i) === -1) order.push(i);
+      for (i = 0; i < order.length; i++) {
+        var id = baseId + '-' + order[i];
+        if (used.indexOf(id) === -1) {
+          if (order[i] !== band) activity.reading = alts[order[i]];
+          activity.readId = id;
+          return activity;
+        }
+      }
+      activity.readId = baseId + '-' + band;
+      return activity;
+    }
+    activity.readId = baseId;
+    return activity;
+  }
+
   function cloneProgress(progress) {
     var matched = {};
     var key;
@@ -396,7 +450,7 @@
   function forPlace(state, placeId) {
     if (!PQWorld || !PQWorld.isPlaceOpen || !PQWorld.isPlaceOpen(state, placeId)) return null;
     if (PLACE_IDS.indexOf(placeId) === -1) return null;
-    return activityForLevel(placeId, levelOf(state));
+    return applyReading(state, activityForLevel(placeId, levelOf(state)), levelOf(state));
   }
 
   function availableIds(state) {

@@ -94,7 +94,9 @@
         qty: pair.qty,
         price: price,
         answer: pair.unit * pair.qty,
-        prompt: 'One costs ' + pair.unit + ' coins. You need ' + pair.qty + '. How many coins is that?'
+        prompt: (rng() < 0.5
+          ? (pair.qty + ' groups of ' + pair.unit + ' coins. How many coins is that?')
+          : ('One costs ' + pair.unit + ' coins. You need ' + pair.qty + '. How many coins is that?'))
       };
     }
     if (grade === 4) {

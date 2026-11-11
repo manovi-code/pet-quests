@@ -161,7 +161,30 @@
     };
   }
 
-  function hikeSteps(grade, focus, rng) {
+  function signRead(grade, state, rng) {
+    var picked = null;
+    if (typeof PQReading !== 'undefined' && PQReading.pickShort) {
+      picked = PQReading.pickShort((state && state.readingUsedIds) || [], rng, grade);
+      if (picked && state && PQReading.rememberRead) PQReading.rememberRead(state, picked.id);
+    }
+    if (!picked) {
+      return ask('sign', 'a trail sign', 'You read a sign about a quiet den. How many animals does the sign name if it says 2?', 2, 'The sign says 2.', rng);
+    }
+    var choices = picked.choices.map(function (label, i) {
+      return { label: label, value: i, ok: i === picked.answer };
+    });
+    return {
+      kind: 'ask',
+      scene: 'leaf',
+      find: 'a trail sign',
+      prompt: picked.text + ' ' + picked.q,
+      answer: picked.answer,
+      hint: picked.hint,
+      choices: shuffle(choices, rng)
+    };
+  }
+
+  function hikeSteps(grade, focus, rng, state) {
     var mul = focus.multiplication !== false;
     var read = !!focus.reading;
     var nestsA = grade <= 1 ? 2 : 3;
@@ -176,26 +199,22 @@
         : 'You read a sign. A maple leaf has five points. How many points does this maple leaf have?')
       : 'You find a leaf with 5 points. How many points is that?';
     var steps = [
+      ask('leaf', 'a maple leaf', leaf, 5, 'The sign says a maple leaf has five points.', rng),
+      ask('nests', 'nests', nestPrompt, nestAnswer, mul
+        ? (nestsA + ' groups of ' + nestsB + '.')
+        : 'Add the eggs you can see.', rng),
+      signRead(grade, state, rng),
       ask('tracks', 'animal tracks', grade <= 1
         ? 'You spot 2 paw prints and then 3 more. How many prints?'
         : 'You spot 4 paw prints and then ' + (grade + 2) + ' more. How many prints?',
       grade <= 1 ? 5 : 4 + grade + 2,
       'Add the two groups of prints.', rng),
-      ask('leaf', 'a maple leaf', leaf, 5, 'The sign says a maple leaf has five points.', rng),
       ask('rocks', 'a stack of rocks', mul
         ? ('You see ' + (grade <= 2 ? 2 : 3) + ' stacks with ' + (grade <= 2 ? 3 : 4) + ' rocks in each. How many rocks?')
         : 'You count 3 rocks and then 4 more. How many rocks?',
       mul ? (grade <= 2 ? 6 : 12) : 7,
       mul ? 'Each stack is a group. Count the groups.' : 'Add the rocks you counted.', rng),
-      ask('nests', 'nests', nestPrompt, nestAnswer, mul
-        ? (nestsA + ' groups of ' + nestsB + '.')
-        : 'Add the eggs you can see.', rng),
-      ask('birds', 'two birds', '2 birds sit on a branch, then 2 more hop up. How many birds?', 4, 'Count the birds on the branch.', rng),
-      ask('flags', 'the lookout', grade >= 4
-        ? 'The lookout sign says 2 posts with 3 flags on each post. How many flags?'
-        : 'You see 2 flags and then 1 more. How many flags?',
-      grade >= 4 ? 6 : 3,
-      'Count the flags at the lookout.', rng)
+      ask('birds', 'two birds', '2 birds sit on a branch, then 2 more hop up. How many birds?', 4, 'Count the birds on the branch.', rng)
     ];
     return steps.slice(0, stepCount(grade));
   }
@@ -288,7 +307,7 @@
     var grade = gradeOf(state);
     var focus = focusOf(state);
     var steps = [];
-    if (id === 'outing-hike') steps = hikeSteps(grade, focus, rng);
+    if (id === 'outing-hike') steps = hikeSteps(grade, focus, rng, state);
     else if (id === 'outing-play') steps = playSteps(grade, focus, rng);
     else if (id === 'outing-beach') steps = beachSteps(grade, focus, rng);
     else if (id === 'outing-camp') steps = campSteps(grade, focus, rng);

@@ -3,12 +3,14 @@
  * Each passage has 2–3 comprehension questions (one reading mission per day).
  */
 (function (root, factory) {
+  var more = typeof require !== 'undefined' ? require('./more-reading.js') : root.PQMoreReading;
+  var api = factory(more || { passages: [], books: [], shorts: [] });
   if (typeof module !== 'undefined' && module.exports) {
-    module.exports = factory();
+    module.exports = api;
   } else {
-    root.PQReading = factory();
+    root.PQReading = api;
   }
-})(typeof globalThis !== 'undefined' ? globalThis : this, function () {
+})(typeof globalThis !== 'undefined' ? globalThis : this, function (more) {
   'use strict';
 
   /**
@@ -1017,6 +1019,10 @@
     p.level = n <= 10 ? 1 : 2;
   });
 
+  (more.passages || []).forEach(function (p) {
+    PASSAGES.push(p);
+  });
+
   var LIBRARY_BOOKS = [
     {
       id: 'b01',
@@ -1068,6 +1074,10 @@
     }
   ];
 
+  (more.books || []).forEach(function (book) {
+    LIBRARY_BOOKS.push(book);
+  });
+
   function getPassageById(id) {
     for (var i = 0; i < PASSAGES.length; i++) {
       if (PASSAGES[i].id === id) return PASSAGES[i];
@@ -1110,25 +1120,78 @@
     return band;
   }
 
+  function unseen(list, usedIds) {
+    return list.filter(function (item) {
+      return usedIds.indexOf(item.id) === -1;
+    });
+  }
+
+  /** Oldest reads first, so a full band still avoids the most recent piece. */
+  function oldestFirst(list, usedIds) {
+    return list.slice().sort(function (a, b) {
+      var ia = usedIds.indexOf(a.id);
+      var ib = usedIds.indexOf(b.id);
+      if (ia < 0 && ib < 0) return 0;
+      if (ia < 0) return -1;
+      if (ib < 0) return 1;
+      return ia - ib;
+    });
+  }
+
+  function pickFrom(list, usedIds, rng) {
+    if (!list.length) return null;
+    var fresh = unseen(list, usedIds);
+    var pool = fresh;
+    if (!pool.length) {
+      pool = oldestFirst(list, usedIds);
+      var take = Math.max(1, Math.ceil(pool.length / 3));
+      pool = pool.slice(0, take);
+    }
+    return pool[Math.floor(rng() * pool.length)];
+  }
+
   function pickPassage(usedIds, rng, options) {
     rng = rng || Math.random;
     usedIds = usedIds || [];
     options = options || {};
-    var level = levelForGrade(options.grade);
-    var fresh = PASSAGES.filter(function (p) {
-      return usedIds.indexOf(p.id) === -1;
+    var grade = parseInt(options.grade, 10);
+    var level = levelForGrade(grade);
+    var levelPool = PASSAGES.filter(function (p) {
+      return !level || p.level === level;
     });
-    var pool = fresh.length ? fresh : PASSAGES.slice();
-    if (level) {
-      var band = pool.filter(function (p) { return p.level === level; });
-      if (!band.length) {
-        band = PASSAGES.filter(function (p) { return p.level === level; });
-      }
-      if (band.length) pool = band;
+    if (!levelPool.length) levelPool = PASSAGES.slice();
+    var preferred = preferBand(levelPool, grade);
+    if (!preferred.length) preferred = levelPool;
+    return pickFrom(preferred, usedIds, rng);
+  }
+
+  function rememberRead(state, id) {
+    if (!state || !id) return state;
+    if (!Array.isArray(state.readingUsedIds)) state.readingUsedIds = [];
+    var next = [];
+    var i;
+    for (i = 0; i < state.readingUsedIds.length; i++) {
+      if (state.readingUsedIds[i] !== id) next.push(state.readingUsedIds[i]);
     }
-    pool = preferBand(pool, parseInt(options.grade, 10));
-    var idx = Math.floor(rng() * pool.length);
-    return pool[idx];
+    next.push(id);
+    if (next.length > 36) next = next.slice(next.length - 36);
+    state.readingUsedIds = next;
+    return state;
+  }
+
+  function shortReads(grade) {
+    var level = levelForGrade(grade);
+    var list = (more.shorts || []).filter(function (row) {
+      return !level || row.level === level;
+    });
+    return list;
+  }
+
+  function pickShort(usedIds, rng, grade) {
+    rng = rng || Math.random;
+    var list = shortReads(grade);
+    if (!list.length) return null;
+    return pickFrom(list, usedIds || [], rng);
   }
 
   function fillPetName(text, petName) {
@@ -1240,6 +1303,9 @@
     levelForGrade: levelForGrade,
     getPassageById: getPassageById,
     pickPassage: pickPassage,
+    rememberRead: rememberRead,
+    shortReads: shortReads,
+    pickShort: pickShort,
     libraryBooks: libraryBooks,
     passageToTasks: passageToTasks,
     checkReadingAnswer: checkReadingAnswer,
