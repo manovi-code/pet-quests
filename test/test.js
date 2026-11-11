@@ -1719,5 +1719,84 @@ test('bingo, word match, and array builder scale with rank and stay kind', funct
   assert.ok(!/wager|bet|jackpot|shame|lose/i.test(win.message + played.message));
 });
 
+var PQNotices = require(path.join(root, 'notices.js'));
+
+test('result cards auto-dismiss after 3 seconds and wait while paused', function () {
+  assert.strictEqual(PQNotices.NOTICE_MS, 3000);
+  var now = 0;
+  var timers = [];
+  var nextId = 1;
+  var dismissed = 0;
+  var notices = PQNotices.create({
+    setTimeout: function (fn, ms) {
+      var id = nextId++;
+      timers.push({ id: id, fn: fn, at: now + ms });
+      return id;
+    },
+    clearTimeout: function (id) {
+      timers = timers.filter(function (timer) { return timer.id !== id; });
+    },
+    onDismiss: function () { dismissed += 1; }
+  });
+  function tick(ms) {
+    now += ms;
+    var due = timers.filter(function (timer) { return timer.at <= now; });
+    timers = timers.filter(function (timer) { return timer.at > now; });
+    due.sort(function (a, b) { return a.at - b.at; });
+    due.forEach(function (timer) { timer.fn(); });
+  }
+  notices.show();
+  tick(2999);
+  assert.strictEqual(notices.isOpen(), true);
+  assert.strictEqual(dismissed, 0);
+  tick(1);
+  assert.strictEqual(notices.isOpen(), false);
+  assert.strictEqual(dismissed, 1);
+
+  notices.show();
+  tick(1000);
+  notices.pause();
+  assert.strictEqual(notices.isPaused(), true);
+  tick(8000);
+  assert.strictEqual(notices.isOpen(), true, 'read-aloud holds the card');
+  assert.strictEqual(dismissed, 1);
+  notices.resume();
+  tick(2999);
+  assert.strictEqual(notices.isOpen(), true);
+  tick(1);
+  assert.strictEqual(dismissed, 2);
+
+  notices.show();
+  tick(400);
+  notices.dismiss();
+  assert.strictEqual(dismissed, 3);
+  assert.strictEqual(notices.isOpen(), false);
+  tick(5000);
+  assert.strictEqual(dismissed, 3, 'a tap closes once and does not fire again');
+});
+
+test('app wires notices to a 3 second toast and pauses for read-aloud', function () {
+  var app = fs.readFileSync(path.join(root, 'app.js'), 'utf8');
+  var sw = fs.readFileSync(path.join(__dirname, '..', 'sw.js'), 'utf8');
+  assert.ok(app.indexOf('PQNotices.create') !== -1);
+  assert.ok(app.indexOf('notices.pause()') !== -1);
+  assert.ok(app.indexOf('notices.resume()') !== -1);
+  assert.ok(app.indexOf('NOTICE_MS') !== -1);
+  assert.ok(sw.indexOf('pet-quests-shell-5') !== -1);
+  assert.ok(sw.indexOf('./js/notices.js') !== -1);
+  assert.ok(app.indexOf("data-act=\"toast-close\"") !== -1);
+  assert.ok(app.indexOf('toast-close">Close') === -1);
+});
+
+if (!process.env.SKIP_FIT) {
+  test('each main screen fits the phone and tablet viewports', function () {
+    var result = require('child_process').spawnSync(process.execPath, [path.join(__dirname, 'fit.js')], {
+      stdio: 'inherit',
+      env: process.env
+    });
+    assert.strictEqual(result.status, 0);
+  });
+}
+
 console.log('\n' + passed + ' passed, ' + failed + ' failed');
 process.exit(failed ? 1 : 0);

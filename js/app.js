@@ -52,6 +52,36 @@
   var board = null;
   var boardEntry = '';
   var logFrom = 'home';
+  var townPage = 0;
+  var homePane = 'map';
+  var settingsTab = 'rank';
+  var readStep = 0;
+  var storyStep = 0;
+  var peeking = false;
+  var bookStep = 0;
+  var learnStep = 0;
+  var actionPage = 0;
+  var shelfPage = 0;
+  var albumPage = 0;
+  var logPage = 0;
+  var notePage = 0;
+  var townSwipe = null;
+  var toastAfter = null;
+  var petMood = 'calm';
+  var solitaireHint = '';
+  var leaveTimer = null;
+  var notices = PQNotices.create({
+    setTimeout: function (fn, ms) { return setTimeout(fn, ms); },
+    clearTimeout: function (id) { clearTimeout(id); },
+    onDismiss: function () {
+      var after = toastAfter;
+      toastAfter = null;
+      toast = null;
+      var el = document.querySelector('.toast-card');
+      if (el && el.parentNode) el.parentNode.removeChild(el);
+      if (after) after();
+    }
+  });
 
   function $(sel) {
     return document.querySelector(sel);
@@ -61,57 +91,179 @@
     store.save(state);
   }
 
+  function clearLeave() {
+    if (leaveTimer) clearTimeout(leaveTimer);
+    leaveTimer = null;
+  }
+
+  function armLeave(fn) {
+    clearLeave();
+    leaveTimer = setTimeout(function () {
+      leaveTimer = null;
+      fn();
+    }, PQNotices.NOTICE_MS);
+  }
+
   function go(name) {
     screen = name;
     feedback = null;
     keypadValue = '';
     readingRevealed = false;
+    readStep = 0;
+    storyStep = 0;
+    peeking = false;
+    learnStep = 0;
+    notePage = 0;
+    clearLeave();
+    toastAfter = null;
     if (name !== 'house') {
       wheelOpen = false;
       pickedId = null;
       drag = null;
+      actionPage = 0;
     }
     if (name !== 'board') boardEntry = '';
+    if (name !== 'shop') shelfPage = 0;
     PQAudio.stopSpeak();
     render();
   }
 
-  function queueToast(kind, message, hint) {
+  function queueToast(kind, message, hint, after) {
     var text = String(message || '').trim();
     var extra = String(hint || '').trim();
     if (!text && !extra) return;
-    toastSerial += 1;
-    var serial = toastSerial;
-    toast = { kind: kind === 'gentle' ? 'gentle' : 'good', message: text, hint: extra };
+    toastAfter = null;
+    petMood = kind === 'gentle' ? 'cheer' : 'happy';
+    toast = {
+      kind: kind === 'gentle' ? 'gentle' : 'good',
+      message: text,
+      hint: extra && extra.length <= 90 ? extra : ''
+    };
     PQWorld.pushLog(state, extra ? (text + ' ' + extra) : text);
-    clearTimeout(toastTimer);
-    toastTimer = setTimeout(function () {
-      if (serial !== toastSerial) return;
-      dismissToast();
-    }, extra ? 8000 : 4800);
+    toastAfter = typeof after === 'function' ? after : null;
+    notices.show();
   }
 
   function dismissToast() {
-    toast = null;
-    toastSerial += 1;
-    var el = document.querySelector('.toast-card');
-    if (el && el.parentNode) el.parentNode.removeChild(el);
+    PQAudio.stopSpeak();
+    if (notices.isOpen()) notices.dismiss();
+    else {
+      toast = null;
+      toastAfter = null;
+      var el = document.querySelector('.toast-card');
+      if (el && el.parentNode) el.parentNode.removeChild(el);
+    }
   }
 
   function toastHtml() {
     if (!toast) return '';
     var speak = PQAudio.canSpeak()
-      ? '<button type="button" class="btn secondary" data-act="toast-speak">Read aloud</button>'
+      ? '<button type="button" class="btn secondary" data-act="toast-speak">🔊 Read</button>'
       : '';
     return (
-      '<div class="toast-card ' + (toast.kind === 'gentle' ? 'gentle' : 'good') + '" role="status">' +
+      '<div class="toast-card ' + (toast.kind === 'gentle' ? 'gentle' : 'good') + '" role="status" data-act="toast-close" aria-label="Notice. Tap to close.">' +
       '<p>' + esc(toast.message) + '</p>' +
       (toast.hint ? '<p class="hint">' + esc(toast.hint) + '</p>' : '') +
-      '<div class="toast-actions">' +
-      speak +
-      '<button type="button" class="btn secondary" data-act="toast-close">Close</button>' +
-      '</div></div>'
+      (speak ? '<div class="toast-actions">' + speak + '</div>' : '') +
+      '</div>'
     );
+  }
+
+  function chunkLimit() {
+    var w = window.innerWidth || 390;
+    return w >= 700 ? 460 : 220;
+  }
+
+  function chunkText(text, limit) {
+    limit = limit || chunkLimit();
+    var paras = String(text || '').split(/\n\n+/);
+    var pages = [];
+    var p;
+    for (p = 0; p < paras.length; p++) {
+      var words = paras[p].trim().split(/\s+/);
+      if (!words[0]) continue;
+      var buf = [];
+      var size = 0;
+      var i;
+      for (i = 0; i < words.length; i++) {
+        if (buf.length && size + words[i].length + 1 > limit) {
+          pages.push(buf.join(' '));
+          buf = [];
+          size = 0;
+        }
+        buf.push(words[i]);
+        size += words[i].length + 1;
+      }
+      if (buf.length) pages.push(buf.join(' '));
+    }
+    if (!pages.length) pages.push('');
+    return pages;
+  }
+
+  function townPerPage() {
+    var w = window.innerWidth || 390;
+    var h = window.innerHeight || 800;
+    if (w >= 700 && h >= 1000) return 12;
+    if (w >= 700) return 8;
+    return 6;
+  }
+
+  function pageCount(total, per) {
+    return Math.max(1, Math.ceil(total / Math.max(1, per)));
+  }
+
+  function clampPage(page, pages) {
+    if (page < 0) return 0;
+    if (page >= pages) return pages - 1;
+    return page;
+  }
+
+  function turnTown(delta, absolute) {
+    var total = PQWorld.visiblePlaces(state).length;
+    var pages = pageCount(total, townPerPage());
+    if (pages <= 1) return;
+    if (absolute) townPage = delta;
+    else townPage += delta;
+    if (townPage < 0) townPage = pages - 1;
+    if (townPage >= pages) townPage = 0;
+    render();
+  }
+
+  function pagerHtml(page, pages, act) {
+    if (pages <= 1) return '';
+    var dots = '';
+    var i;
+    for (i = 0; i < pages; i++) {
+      dots += '<button type="button" class="dot' + (i === page ? ' on' : '') + '" data-act="' + act + '" data-page="' + i + '" aria-label="Page ' + (i + 1) + ' of ' + pages + '"></button>';
+    }
+    return (
+      '<div class="pager">' +
+      '<button type="button" class="btn pager-arrow" data-act="' + act + '" data-dir="-1" aria-label="Previous">◀</button>' +
+      '<div class="dots" aria-hidden="true">' + dots + '</div>' +
+      '<button type="button" class="btn pager-arrow" data-act="' + act + '" data-dir="1" aria-label="Next">▶</button>' +
+      '</div>'
+    );
+  }
+
+  function readPager(t, page, pages) {
+    var raw = t.getAttribute('data-page');
+    if (raw != null && raw !== '') return clampPage(parseInt(raw, 10) || 0, pages);
+    var dir = parseInt(t.getAttribute('data-dir'), 10) || 0;
+    var next = page + dir;
+    if (next < 0) next = pages - 1;
+    if (next >= pages) next = 0;
+    return next;
+  }
+
+  function actionIcon(id) {
+    var icons = {
+      feed: '🥣', play: '🎾', tuck: '🛏️', window: '🪟', toy: '🧸', kettle: '🫖',
+      table: '🪑', cushion: '📖', desk: '✏️', sunny: '☀️', surprise: '🎁',
+      chair: '🪑', pictures: '🖼️', books: '📚', seat: '🪟', bell: '🔔',
+      swing: '🛝', shelves: '🏪', blocks: '🧱', page: '📄', count: '🐟',
+      brush: '🖌️', tap: '🥁', shells: '🐚', lantern: '🏮', bench: '🚉', flowers: '🌼'
+    };
+    return icons[id] || '✨';
   }
 
   function todayDone() {
@@ -145,7 +297,7 @@
     var app = $('#app');
     if (!app) return;
     app.innerHTML = '';
-    app.className = 'app screen-' + screen;
+    app.className = 'app screen-' + screen + (wheelOpen && screen === 'house' ? ' wheel-open' : '');
 
     if (screen === 'welcome') renderWelcome(app);
     else if (screen === 'pick-pet') renderPickPet(app);
@@ -175,47 +327,55 @@
     bindGlobal();
   }
 
+  function headerPet(force) {
+    if (!state.petId) return '';
+    if (!force && !state.onboardingDone) return '';
+    return (
+      '<span class="header-pet" aria-hidden="true">' +
+      PQPets.renderPetSvg(state.petId, state.growthStage || 0, {
+        label: PQPets.displayName(state),
+        mood: petMood
+      }) +
+      '</span>'
+    );
+  }
+
   function headerBar(title, opts) {
     opts = opts || {};
     var soundLabel = state.soundOn ? 'Sound on' : 'Sound off';
     var back = opts.back
       ? '<button type="button" class="icon-btn" data-act="back" aria-label="Back">←</button>'
       : '<span class="icon-btn spacer"></span>';
-    var logBtn =
-      '<button type="button" class="icon-btn log-btn" data-act="open-log" aria-label="What happened">★</button>';
+    var gear = opts.settings
+      ? '<button type="button" class="icon-btn" data-act="open-settings" aria-label="Settings">⚙️</button>'
+      : '';
+    var pet = opts.pet === false ? '' : headerPet(!!opts.pet);
     return (
       '<header class="topbar">' +
       back +
-      '<h1 class="top-title">' +
-      esc(title) +
-      '</h1>' +
-      logBtn +
+      '<h1 class="top-title">' + esc(title) + '</h1>' +
+      pet +
+      gear +
+      '<button type="button" class="icon-btn log-btn" data-act="open-log" aria-label="What happened">★</button>' +
       '<button type="button" class="icon-btn sound-btn" data-act="toggle-sound" aria-label="' +
-      soundLabel +
-      '" aria-pressed="' +
-      (state.soundOn ? 'true' : 'false') +
-      '">' +
+      soundLabel + '" aria-pressed="' + (state.soundOn ? 'true' : 'false') + '">' +
       (state.soundOn ? '♪' : '🔇') +
-      '</button>' +
-      '</header>'
+      '</button></header>'
     );
   }
 
   function renderWelcome(app) {
     app.innerHTML =
-      headerBar('Pet Quests') +
-      '<main class="panel welcome">' +
-      '<div class="hero-mark" aria-hidden="true">🌿</div>' +
-      '<h2>Welcome to Pet Quests</h2>' +
-      '<p class="lede">Practice a little each day. Your pet grows with you, and your town starts at home. Progress stays on this phone.</p>' +
-      '<ul class="soft-list">' +
-      '<li>Warmup math</li>' +
-      '<li>A pet story</li>' +
-      '<li>Times tables practice</li>' +
-      '<li>A town that grows from your house</li>' +
-      '<li>A party with animal friends at the end</li>' +
-      '</ul>' +
-      '<button type="button" class="btn primary lg" data-act="start-onboarding">Meet your pet</button>' +
+      headerBar('Pet Quests', { pet: false }) +
+      '<main class="panel welcome fit-col">' +
+      '<div class="hero-mark" aria-hidden="true">🐾</div>' +
+      '<h2>Pet Quests</h2>' +
+      '<p class="lede">Short quests. A pet who grows with you. A town that starts at your house.</p>' +
+      '<div class="welcome-pills">' +
+      '<span>➕ Warmup</span><span>📖 Story</span><span>✖️ Tables</span>' +
+      '</div>' +
+      '<p class="lede">Progress stays on this phone.</p>' +
+      '<button type="button" class="btn primary lg" data-act="start-onboarding">🐾 Meet your pet</button>' +
       '</main>';
   }
 
@@ -246,13 +406,13 @@
     app.innerHTML =
       headerBar('Choose a pet', { back: true }) +
       '<main class="panel">' +
-      '<p class="lede center">Pick a friend for your garden habitat.</p>' +
+      '<p class="lede center">Pick a friend.</p>' +
       '<div class="pet-grid">' +
       cards +
       '</div>' +
       '<button type="button" class="btn primary lg" data-act="confirm-pet" ' +
       (selectedPet ? '' : 'disabled') +
-      '>Continue</button>' +
+      '>👉 This one</button>' +
       '</main>';
   }
 
@@ -274,7 +434,7 @@
       esc(nicknameDraft) +
       '" />' +
       '</label>' +
-      '<button type="button" class="btn primary lg" data-act="finish-onboarding">Come home</button>' +
+      '<button type="button" class="btn primary lg" data-act="finish-onboarding">🏠 Come home</button>' +
       '<button type="button" class="btn ghost" data-act="finish-onboarding-skip">Skip for now</button>' +
       '</main>';
     var input = $('#nick-input');
@@ -359,115 +519,107 @@
     var stage = state.growthStage || 0;
     var week = PQStorage.weeklyProgress(state);
     var done = todayDone();
-    var note = neighborhoodNote
-      ? '<p class="kind-note">' + esc(neighborhoodNote) + '</p>'
-      : '';
-    var houses = PQWorld.visiblePlaces(state).map(function (house) {
+    var places = PQWorld.visiblePlaces(state);
+    var per = townPerPage();
+    var pages = pageCount(places.length, per);
+    townPage = clampPage(townPage, pages);
+    var slice = places.slice(townPage * per, townPage * per + per);
+    var houses = slice.map(function (house) {
       var title = PQWorld.houseTitle(house, name);
       var missions = missionsHere(house);
       var flag = '';
       var mi;
       for (mi = 0; mi < missions.length; mi++) {
-        if (missionStillOpen(missions[mi].id)) flag = '<em class="house-flag">Quest here</em>';
+        if (missionStillOpen(missions[mi].id)) flag = '<em class="house-flag">Quest</em>';
       }
       return (
-        '<button type="button" class="house-card" data-act="open-house" data-house="' +
-        house.id +
-        '">' +
-        '<span class="house-art">' +
-        PQWorld.renderHouseFront(house.id) +
-        '</span>' +
-        '<strong>' +
-        esc(title) +
-        '</strong>' +
-        '<span>' +
-        esc(house.blurb) +
-        '</span>' +
+        '<button type="button" class="house-card" data-act="open-house" data-house="' + house.id + '">' +
+        '<span class="house-art">' + PQWorld.renderHouseFront(house.id) + '</span>' +
+        '<strong>' + esc(title) + '</strong>' +
+        '<span>' + esc(house.blurb) + '</span>' +
         flag +
         '</button>'
       );
     }).join('');
-    var pathNote = PQWorld.nextLockedPlace(state)
-      ? '<p class="kind-note">' + esc(done
-        ? 'A visit and a small gift can still surprise you.'
-        : PQWorld.townHint(state)) + '</p>'
-      : '';
     var cta = done
-      ? '<p class="kind-note">Today’s quest is done. The party is still open, and the town is too.</p>' +
-        '<button type="button" class="btn primary lg" data-act="open-party">Visit the party</button>' +
-        '<button type="button" class="btn secondary" data-act="extra-practice">Extra times tables</button>'
-      : '<button type="button" class="btn primary lg" data-act="start-quest">Start today’s quest</button>';
+      ? '<button type="button" class="btn primary" data-act="open-party">🎉 Party</button>'
+      : '<button type="button" class="btn primary" data-act="start-quest">▶ Start quest</button>';
     var todayKey = PQStorage.localDateKey();
     var days = PQDays.onVisit(state, todayKey);
-    var giftBtn = days.giftPending
-      ? '<button type="button" class="btn secondary" data-act="open-gift">Open today’s gift</button>'
-      : '';
-    var greetBtn = '<button type="button" class="btn secondary" data-act="greet-pet">Say hello to ' + esc(name) + '</button>';
-    var weekGift = week.met
-      ? '<button type="button" class="btn secondary" data-act="claim-week">Open the weekly gift</button>'
-      : '';
-    var shopBtn = PQWorld.isPlaceOpen(state, 'store')
-      ? '<button type="button" class="btn secondary" data-act="open-shop">General store</button>'
-      : '';
-
+    var stickers = PQDays.calendar(state, week.weekKey).stickers;
+    var pane = '';
+    if (homePane === 'today') pane = todayPaneHtml(name, days, week, done);
+    else if (homePane === 'week') pane = weekPaneHtml(week);
+    else {
+      pane =
+        '<div class="town-map" aria-label="Town">' + houses + '</div>' +
+        pagerHtml(townPage, pages, 'town-page');
+    }
     app.innerHTML =
-      headerBar('Pet Quests') +
-      '<main class="panel home">' +
-      '<div class="home-layout">' +
-      '<div class="home-hero">' +
-      '<div class="garden-banner">' +
-      PQWorld.renderSkylineSvg(state) +
-      '<div class="pet-on-banner">' +
-      PQPets.renderPetSvg(state.petId, stage, { label: name, mood: days.giftPending ? 'happy' : 'calm' }) +
+      headerBar('Pet Quests', { settings: true, pet: false }) +
+      '<main class="panel home fit-col">' +
+      '<div class="chip-row">' +
+      '<button type="button" class="chip" data-act="open-bank">🪙 ' + PQBank.getCoins(state) + '</button>' +
+      '<button type="button" class="chip' + (homePane === 'week' ? ' on' : '') + '" data-act="home-pane" data-pane="week">★ ' + stickers + '</button>' +
+      '<button type="button" class="chip' + (homePane === 'today' ? ' on' : '') + '" data-act="home-pane" data-pane="today">✨ Today</button>' +
+      '<button type="button" class="chip' + (homePane === 'map' ? ' on' : '') + '" data-act="home-pane" data-pane="map">🗺️ Town</button>' +
       '</div>' +
+      '<div class="pet-strip">' +
+      '<div class="pet-face">' +
+      PQPets.renderPetSvg(state.petId, stage, { label: name, mood: days.giftPending ? 'happy' : petMood }) +
       '</div>' +
-      '<h2 class="pet-name">' +
-      esc(name) +
-      '</h2>' +
-      '<p class="stage-label">' +
-      esc(PQPets.STAGE_LABELS[stage] || '') +
-      '</p>' +
-      '<button type="button" class="bank-chip" data-act="open-bank">Bank · ' +
-      PQBank.getCoins(state) +
-      ' coins</button>' +
-      calendarHtml() +
-      (visitNote ? '<p class="whats-new"><span>What’s new today</span> ' + esc(visitNote) + '</p>' : '') +
-      todayPlanHtml() +
-      note +
-      pathNote +
-      readyCardHtml() +
+      '<div class="pet-strip-copy"><h2>' + esc(name) + '</h2><p>' +
+      esc(PQPets.STAGE_LABELS[stage] || '') + '</p></div>' +
       cta +
-      giftBtn +
-      greetBtn +
-      weekGift +
       '</div>' +
-      '<div class="home-town">' +
-      '<div class="house-grid" aria-label="Neighborhood">' +
-      houses +
-      '</div>' +
-      '<div class="week-card" aria-label="Weekly goal">' +
-      '<div class="week-top"><span>This week</span><strong>' +
-      week.completed +
-      ' / ' +
-      week.goal +
-      ' days</strong></div>' +
-      '<div class="week-bar" role="progressbar" aria-valuemin="0" aria-valuemax="' +
-      week.goal +
-      '" aria-valuenow="' +
-      week.completed +
-      '"><i style="width:' +
-      Math.min(100, (week.completed / week.goal) * 100) +
-      '%"></i></div>' +
-      '<p class="week-hint">Goal: finish 5 daily quests this week. A quiet day is okay.</p>' +
-      '</div>' +
-      '<div class="home-actions">' +
-      shopBtn +
-      '<button type="button" class="btn secondary" data-act="open-album">Sticker book</button>' +
-      '<button type="button" class="btn secondary" data-act="open-settings">Settings</button>' +
-      '</div>' +
-      '</div>' +
-      '</div>' +
+      pane +
       '</main>';
+  }
+
+  function todayPaneHtml(name, days, week, done) {
+    var bits = [];
+    if (visitNote) bits.push(visitNote);
+    if (neighborhoodNote) bits.push(neighborhoodNote);
+    var described = '';
+    var planBlock = todayPlanHtml();
+    var pages = chunkText(bits.join(' '), 180);
+    notePage = clampPage(notePage, pages.length);
+    var note = pages[0]
+      ? '<p class="note-page">' + esc(pages[notePage] || pages[0]) + '</p>' +
+        pagerHtml(notePage, pages.length, 'note-page')
+      : '';
+    var buttons = '';
+    if (days.giftPending) buttons += '<button type="button" class="btn secondary" data-act="open-gift">🎁 Gift</button>';
+    buttons += '<button type="button" class="btn secondary" data-act="greet-pet">👋 Hello</button>';
+    if (week.met) buttons += '<button type="button" class="btn secondary" data-act="claim-week">🌟 Week gift</button>';
+    if (PQWorld.isPlaceOpen(state, 'store')) buttons += '<button type="button" class="btn secondary" data-act="open-shop">🏪 Shop</button>';
+    buttons += '<button type="button" class="btn secondary" data-act="open-album">📒 Stickers</button>';
+    if (done) buttons += '<button type="button" class="btn secondary" data-act="extra-practice">✖️ Extra tables</button>';
+    var hint = PQWorld.nextLockedPlace(state)
+      ? '<p class="week-hint">' + esc(done ? 'A visit can still surprise you.' : PQWorld.townHint(state)) + '</p>'
+      : '';
+    return (
+      '<div class="pane">' +
+      note +
+      planBlock +
+      hint +
+      readyCardHtml() +
+      '<div class="action-grid">' + buttons + '</div>' +
+      '</div>'
+    );
+  }
+
+  function weekPaneHtml(week) {
+    return (
+      '<div class="pane">' +
+      calendarHtml() +
+      '<div class="week-bar" role="progressbar" aria-valuemin="0" aria-valuemax="' + week.goal +
+      '" aria-valuenow="' + week.completed + '"><i style="width:' +
+      Math.min(100, (week.completed / week.goal) * 100) + '%"></i></div>' +
+      '<p class="week-hint">' + week.completed + ' of ' + week.goal + ' quests. A quiet day is okay.</p>' +
+      (week.met ? '<button type="button" class="btn primary" data-act="claim-week">🌟 Week gift</button>' : '') +
+      '</div>'
+    );
   }
 
   function calendarHtml() {
@@ -498,18 +650,7 @@
     var name = PQPets.displayName(state);
     var title = PQWorld.houseTitle(house, name);
     var actions = PQWorld.actionsFor(house, state);
-    var buttons = actions
-      .map(function (action) {
-        return (
-          '<button type="button" class="btn secondary role-btn" data-act="role-act" data-action="' +
-          action.id +
-          '">' +
-          esc(action.label) +
-          '</button>'
-        );
-      })
-      .join('');
-    var questBtn = '';
+    var dock = [];
     var sawOff = false;
     missionsHere(house).forEach(function (mission) {
       if (!state.courses.parts[mission.id]) {
@@ -517,71 +658,85 @@
         return;
       }
       if (todayDone() && mission.id === 'multiply') {
-        questBtn += '<button type="button" class="btn secondary" data-act="extra-practice">Extra times tables</button>';
+        dock.push('<button type="button" class="dock-btn" data-act="extra-practice">✖️ Extra tables</button>');
         return;
       }
       if (todayDone() || !missionStillOpen(mission.id)) return;
-      questBtn +=
-        '<button type="button" class="btn primary lg" data-act="start-mission" data-mission="' +
-        mission.id +
-        '">' +
-        esc(mission.label) +
-        '</button>';
+      var missionIcon = mission.id === 'reading' ? '📖' : (mission.id === 'multiply' ? '✖️' : '🥣');
+      var missionWord = mission.id === 'reading' ? 'Story' : (mission.id === 'multiply' ? 'Tables' : 'Warmup');
+      dock.push(
+        '<button type="button" class="dock-btn" data-act="start-mission" data-mission="' +
+        mission.id + '">' + missionIcon + ' ' + missionWord + '</button>'
+      );
     });
-    if (sawOff) questBtn += '<p class="plain-note">Some practice is off today. You can still look around.</p>';
     var activity = PQLearn.forPlace(state, house.id);
     var placeGame = PQGames.forPlace(state, house.id);
-    var gameBtn = '';
     if (house.id === 'parlor' && PQSolitaire.canPlay(state)) {
-      gameBtn = '<button type="button" class="btn primary lg" data-act="open-solitaire">Play solitaire</button>';
+      dock.push('<button type="button" class="dock-btn" data-act="open-solitaire">🃏 Solitaire</button>');
     }
     if (placeGame) {
-      gameBtn += '<button type="button" class="btn primary lg" data-act="open-game">' + esc(placeGame.button || placeGame.title) + '</button>';
+      dock.push('<button type="button" class="dock-btn" data-act="open-game">🎮 ' + esc(placeGame.button || placeGame.title) + '</button>');
     }
     if (activity) {
-      gameBtn += '<button type="button" class="btn secondary" data-act="open-activity">' + esc(activity.button || activity.title) + '</button>';
+      dock.push('<button type="button" class="dock-btn" data-act="open-activity">🔬 ' + esc(activity.button || activity.title) + '</button>');
     }
     if (house.id === 'store') {
-      gameBtn += '<button type="button" class="btn primary lg" data-act="open-shop">Shop the shelves</button>';
+      dock.push('<button type="button" class="dock-btn" data-act="open-shop">🏪 Shop</button>');
     }
     PQBoards.forPlace(state, house.id).forEach(function (meta) {
-      gameBtn += '<button type="button" class="btn primary lg" data-act="open-board" data-game="' +
-        meta.id + '">' + esc(meta.button) + '</button>';
+      dock.push('<button type="button" class="dock-btn" data-act="open-board" data-game="' +
+        meta.id + '">🎲 ' + esc(meta.button) + '</button>');
+    });
+    actions.forEach(function (action) {
+      dock.push(
+        '<button type="button" class="dock-btn" data-act="role-act" data-action="' + action.id + '">' +
+        actionIcon(action.id) + ' ' + esc(shortActionLabel(action.label)) + '</button>'
+      );
     });
     var petBit =
       house.id === 'pet' || house.id === 'friend'
         ? '<div class="pet-in-room">' +
-          PQPets.renderPetSvg(state.petId, state.growthStage || 0, { label: name }) +
+          PQPets.renderPetSvg(state.petId, state.growthStage || 0, { label: name, mood: petMood }) +
           '</div>'
         : '';
-    var pickHint = pickedId
-      ? '<p class="place-hint">Tap a spot in the room, or drag it. The tray puts it away.</p>'
-      : '';
     var thingsBtn = PQWorld.wheelGroups(state).length
       ? '<button type="button" class="wheel-fab" data-act="toggle-wheel" aria-label="Things you can place" aria-expanded="' +
-        (wheelOpen ? 'true' : 'false') + '">Things</button>'
+        (wheelOpen ? 'true' : 'false') + '">🧺 Things</button>'
       : '';
+    var per = (window.innerWidth || 390) >= 700 ? 6 : 4;
+    var pages = pageCount(dock.length, per);
+    actionPage = clampPage(actionPage, pages);
+    var roleSlice = dock.slice(actionPage * per, actionPage * per + per).join('');
+    var offNote = sawOff ? '<p class="week-hint">Some practice is off today. You can still look around.</p>' : '';
 
     app.innerHTML =
       headerBar(title, { back: true }) +
-      '<main class="panel house">' +
+      '<main class="panel house fit-col">' +
       '<div class="room-stage" data-place="' + esc(house.id) + '">' +
       PQWorld.renderRoomSvg(house.id, state, { bare: true }) +
       placedItemsHtml(house.id) +
       petBit +
-      '<button type="button" class="put-away" data-act="put-away">Put away</button>' +
+      '<button type="button" class="put-away" data-act="put-away">📦 Put away</button>' +
       thingsBtn +
       '</div>' +
-      pickHint +
-      '<p class="lede">' +
-      esc(house.blurb) +
-      '</p>' +
-      questBtn +
-      gameBtn +
-      '<div class="role-actions">' +
-      buttons +
-      '</div>' +
+      (pickedId ? '<p class="place-hint">Tap a spot, or drag it onto Put away.</p>' : '') +
+      (wheelOpen ? '' : (
+        '<div class="dock">' +
+        offNote +
+        '<div class="dock-grid">' + roleSlice + '</div>' +
+        pagerHtml(actionPage, pages, 'action-page') +
+        '</div>'
+      )) +
       '</main>';
+  }
+
+  function shortActionLabel(label) {
+    var text = String(label || '');
+    text = text.replace(/^Sit (at|on|in) the /i, '').replace(/^Sit in the /i, '');
+    text = text.replace(/^Look out the /i, '').replace(/^Look for a /i, '');
+    text = text.replace(/^Check the /i, '');
+    if (text.length > 22) text = text.slice(0, 21) + '…';
+    return text;
   }
 
   function renderQuest(app) {
@@ -621,24 +776,22 @@
     else if (task.type === 'reading-q') body = renderReadingQ(task);
     else body = renderMathTask(task);
 
+    var gentle = feedback && feedback.kind !== 'good' ? hintStripHtml() : '';
     app.innerHTML =
       headerBar(mission || 'Quest', { back: true }) +
-      '<main class="panel quest">' +
-      hintStripHtml() +
+      '<main class="panel quest fit-col">' +
+      '<div class="quest-top">' +
+      '<div class="pet-face quest-pet">' +
+      (state.petId ? PQPets.renderPetSvg(state.petId, state.growthStage || 0, { label: PQPets.displayName(state), mood: petMood }) : '') +
+      '</div>' +
       '<div class="quest-progress">' +
-      '<div class="quest-progress-top"><span>Quest progress</span><span>' +
-      (doneCount + 1) +
-      ' / ' +
-      total +
+      '<div class="quest-progress-top"><span>Quest</span><span>' +
+      (doneCount + 1) + ' / ' + total +
       '</span></div>' +
       '<div class="week-bar thin" role="progressbar" aria-valuemin="0" aria-valuemax="' +
-      total +
-      '" aria-valuenow="' +
-      doneCount +
-      '"><i style="width:' +
-      progressPct +
-      '%"></i></div>' +
-      '</div>' +
+      total + '" aria-valuenow="' + doneCount + '"><i style="width:' +
+      progressPct + '%"></i></div></div></div>' +
+      gentle +
       body +
       '</main>';
   }
@@ -693,30 +846,34 @@
     );
   }
 
-  function renderReadingPass(task) {
-    var speakBtn = PQAudio.canSpeak()
-      ? '<button type="button" class="btn secondary" data-act="read-aloud">Read aloud</button>'
-      : '';
-    var words = '';
+  function passagePages(task) {
+    var pages = [];
     if (task.words && task.words.length) {
-      words = '<div class="preteach"><p class="eyebrow">Word to know</p>' +
-        task.words.map(function (word) {
-          return '<p><strong>' + esc(word.word) + '.</strong> ' + esc(word.say) + '</p>';
-        }).join('') +
-        '</div>';
+      pages.push(task.words.map(function (word) {
+        return word.word + '. ' + word.say;
+      }).join(' '));
     }
+    chunkText(task.text).forEach(function (page) { pages.push(page); });
+    return pages.length ? pages : [''];
+  }
+
+  function renderReadingPass(task) {
+    var pages = passagePages(task);
+    readStep = clampPage(readStep, pages.length);
+    var last = readStep >= pages.length - 1;
+    var speakBtn = PQAudio.canSpeak()
+      ? '<button type="button" class="btn secondary" data-act="read-aloud">🔊 Read</button>'
+      : '';
+    var next = last
+      ? '<button type="button" class="btn primary" data-act="reading-continue">✅ I read it</button>'
+      : '<button type="button" class="btn primary" data-act="read-next">➡️ Next</button>';
     return (
       '<section class="reading-card">' +
       '<p class="eyebrow">Story</p>' +
-      '<h2>' +
-      esc(task.title) +
-      '</h2>' +
-      words +
-      passageBlocks(task.text) +
-      '<div class="row-actions">' +
-      speakBtn +
-      '<button type="button" class="btn primary lg" data-act="reading-continue">I read it</button>' +
-      '</div>' +
+      '<h2>' + esc(task.title) + '</h2>' +
+      '<p class="passage">' + esc(pages[readStep]) + '</p>' +
+      pagerHtml(readStep, pages.length, 'read-step') +
+      '<div class="action-grid">' + speakBtn + next + '</div>' +
       '</section>'
     );
   }
@@ -737,49 +894,54 @@
         );
       })
       .join('');
+    if (peeking) {
+      var pages = chunkText(task.text);
+      readStep = clampPage(readStep, pages.length);
+      return (
+        '<section class="reading-card">' +
+        '<p class="eyebrow">Story</p>' +
+        '<p class="passage">' + esc(pages[readStep] || '') + '</p>' +
+        pagerHtml(readStep, pages.length, 'read-step') +
+        '<button type="button" class="btn primary" data-act="peek-back">❓ Back to the question</button>' +
+        '</section>'
+      );
+    }
     return (
       '<section class="reading-card">' +
-      '<p class="eyebrow">From the story</p>' +
-      '<details class="passage-peek"><summary>Show story again</summary>' +
-      passageBlocks(task.text) +
-      '</details>' +
-      '<h2 class="question">' +
-      esc(task.question) +
-      '</h2>' +
-      '<div class="choices">' +
-      choices +
-      '</div>' +
+      '<button type="button" class="btn secondary" data-act="peek-story">📖 Story</button>' +
+      '<h2 class="question">' + esc(task.question) + '</h2>' +
+      '<div class="choices">' + choices + '</div>' +
       '</section>'
     );
   }
 
   function renderMathTask(task) {
-    var story = '';
-    if (task.story && task.story.text) {
-      story =
-        '<p class="story-text">' + esc(task.story.text) + '</p>' +
-        '<div class="story-art">' + PQMath.renderStorySvg(task.story) + '</div>' +
-        '<button type="button" class="btn secondary" data-act="read-story">Read aloud</button>';
-    }
     var tokens = state.world && state.world.hintTokens ? state.world.hintTokens : 0;
     var hintBtn = tokens > 0
-      ? '<button type="button" class="btn secondary" data-act="use-hint">Use a gentle hint (' + tokens + ')</button>'
+      ? '<button type="button" class="btn secondary" data-act="use-hint">💡 Hint (' + tokens + ')</button>'
       : '';
+    if (task.story && task.story.text && storyStep < 1) {
+      var speak = PQAudio.canSpeak()
+        ? '<button type="button" class="btn secondary" data-act="read-story">🔊 Read</button>'
+        : '';
+      return (
+        '<section class="math-card">' +
+        '<p class="eyebrow">Story problem</p>' +
+        '<div class="story-art">' + PQMath.renderStorySvg(task.story) + '</div>' +
+        '<p class="story-text">' + esc(task.story.text) + '</p>' +
+        '<div class="action-grid">' + speak +
+        '<button type="button" class="btn primary" data-act="story-next">➡️ Next</button></div>' +
+        '</section>'
+      );
+    }
     var eyebrow = task.story
       ? 'Story problem'
       : (task.type === 'add' ? 'Addition' : (task.type === 'sub' ? 'Subtraction' : 'Times tables'));
     return (
       '<section class="math-card">' +
-      '<p class="eyebrow">' +
-      eyebrow +
-      '</p>' +
-      story +
-      '<div class="prompt' + (task.story ? ' story-prompt' : '') + '" aria-live="polite">' +
-      esc(task.prompt) +
-      ' = ?</div>' +
-      '<div class="answer-display" aria-live="polite">' +
-      (keypadValue || ' ') +
-      '</div>' +
+      '<p class="eyebrow">' + eyebrow + '</p>' +
+      '<div class="prompt" aria-live="polite">' + esc(task.prompt) + ' = ?</div>' +
+      '<div class="answer-display" aria-live="polite">' + (keypadValue || ' ') + '</div>' +
       hintBtn +
       renderKeypad() +
       '</section>'
@@ -823,38 +985,18 @@
     var stage = state.growthStage || 0;
     var week = PQStorage.weeklyProgress(state);
     app.innerHTML =
-      headerBar('Quest complete') +
-      '<main class="panel celebrate">' +
+      headerBar('Nice work') +
+      '<main class="panel celebrate fit-col">' +
       '<div class="pet-preview big">' +
-      PQPets.renderPetSvg(state.petId, stage, { label: name }) +
+      PQPets.renderPetSvg(state.petId, stage, { label: name, mood: 'happy' }) +
       '</div>' +
-      '<h2>Wonderful work!</h2>' +
-      '<p class="lede">' +
-      esc(name) +
-      ' looks proud. The town grew a little too.</p>' +
-      (freshUnlock
-        ? '<p class="kind-note">' + esc(freshUnlock.line) + '</p>'
-        : '') +
-      (freshPlace
-        ? '<p class="kind-note">' + esc(freshPlace.openLine) + '</p>'
-        : '') +
-      '<div class="week-card">' +
-      '<div class="week-top"><span>This week</span><strong>' +
-      week.completed +
-      ' / ' +
-      week.goal +
-      ' days</strong></div>' +
+      '<h2>Nice work</h2>' +
+      '<p class="lede">' + esc(name) + ' looks proud.</p>' +
       '<div class="week-bar"><i style="width:' +
-      Math.min(100, (week.completed / week.goal) * 100) +
-      '%"></i></div>' +
-      (week.met
-        ? '<p class="week-hint">Weekly goal met — extra growth for ' +
-          esc(name) +
-          '!</p>'
-        : '<p class="week-hint">Keep going at your pace. Missing a day is okay.</p>') +
-      '</div>' +
-      '<button type="button" class="btn primary lg" data-act="go-home">Back to town</button>' +
-      '<button type="button" class="btn secondary" data-act="open-party">Back to the party</button>' +
+      Math.min(100, (week.completed / week.goal) * 100) + '%"></i></div>' +
+      '<p class="week-hint">' + week.completed + ' of ' + week.goal + ' quests this week.</p>' +
+      '<button type="button" class="btn primary" data-act="go-home">🗺️ Town</button>' +
+      '<button type="button" class="btn secondary" data-act="open-party">🎉 Party</button>' +
       '</main>';
   }
 
@@ -868,51 +1010,47 @@
 
   function renderLibrary(app) {
     var book = currentBook();
+    var pages = chunkText(book ? book.text : '');
+    bookStep = clampPage(bookStep, pages.length);
+    var last = bookStep >= pages.length - 1;
     var speakBtn = PQAudio.canSpeak()
-      ? '<button type="button" class="btn secondary" data-act="read-aloud">Read aloud</button>'
+      ? '<button type="button" class="btn secondary" data-act="read-aloud">🔊 Read</button>'
       : '';
+    var next = last
+      ? '<button type="button" class="btn primary" data-act="next-book">📚 Another story</button>'
+      : '<button type="button" class="btn primary" data-act="book-next">➡️ Next</button>';
     app.innerHTML =
-      headerBar('Extra story', { back: true }) +
-      '<main class="panel">' +
-      '<div class="room-wrap">' + PQWorld.renderRoomSvg('library', state) + '</div>' +
-      '<p class="lede">These stories are extra. You can read one anytime. They are not part of today’s quest.</p>' +
+      headerBar('Library', { back: true }) +
+      '<main class="panel fit-col">' +
+      '<p class="week-hint">Extra story. Not part of today’s quest.</p>' +
       '<section class="reading-card">' +
       '<h2>' + esc(book ? book.title : 'Story') + '</h2>' +
-      passageBlocks(book ? book.text : '') +
-      '<div class="row-actions">' +
-      speakBtn +
-      '<button type="button" class="btn secondary" data-act="next-book">Another story</button>' +
-      '<button type="button" class="btn primary lg" data-act="back">Back to the library</button>' +
-      '</div>' +
-      '</section>' +
-      '</main>';
+      '<p class="passage">' + esc(pages[bookStep] || '') + '</p>' +
+      pagerHtml(bookStep, pages.length, 'book-step') +
+      '<div class="action-grid">' + speakBtn + next + '</div>' +
+      '</section></main>';
   }
 
   function renderParty(app) {
     var name = PQPets.displayName(state);
-    var note = partyNote
-      ? '<div class="feedback good" role="status"><p>' + esc(partyNote) + '</p></div>'
-      : '';
     var prizeCount = (state.world && state.world.prizes) ? state.world.prizes.length : 0;
     app.innerHTML =
       headerBar('Party', { back: true }) +
-      '<main class="panel party">' +
+      '<main class="panel party fit-col">' +
       '<div class="party-friends" aria-hidden="true">' +
       PQParty.renderFaceSvg('fox') +
       PQParty.renderFaceSvg('frog') +
       PQParty.renderFaceSvg('bird') +
       '</div>' +
-      '<h2>Party time</h2>' +
-      '<p class="lede">The school work is done. ' + esc(name) +
-      ' is here with Fern the fox, Moss the frog, and Coco the bird. Play a game, or leave whenever you like.</p>' +
-      (freshUnlock ? '<p class="kind-note">' + esc(freshUnlock.line) + '</p>' : '') +
-      (freshPlace ? '<p class="kind-note">' + esc(freshPlace.openLine) + '</p>' : '') +
-      '<button type="button" class="btn primary lg" data-act="open-cards">Play pet cards</button>' +
-      '<button type="button" class="btn primary lg" data-act="open-spin">Spin for a prize</button>' +
-      '<button type="button" class="btn secondary" data-act="party-dance">Dance</button>' +
-      '<button type="button" class="btn secondary" data-act="party-hug">Hug a friend</button>' +
-      '<p class="plain-note">Prizes saved on this device: ' + prizeCount + '.</p>' +
-      note +
+      '<h2>Party</h2>' +
+      '<p class="lede">' + esc(name) + ' is here with Fern, Moss, and Coco.</p>' +
+      '<div class="action-grid">' +
+      '<button type="button" class="btn primary" data-act="open-cards">🃏 Cards</button>' +
+      '<button type="button" class="btn primary" data-act="open-spin">🎰 Spin</button>' +
+      '<button type="button" class="btn secondary" data-act="party-dance">💃 Dance</button>' +
+      '<button type="button" class="btn secondary" data-act="party-hug">🤗 Hug</button>' +
+      '</div>' +
+      '<p class="week-hint">Prizes saved here: ' + prizeCount + '.</p>' +
       '<button type="button" class="btn ghost" data-act="leave-party">Leave the party</button>' +
       '</main>';
   }
@@ -932,19 +1070,13 @@
         );
       }).join('') + '</div>';
     }
-    var continueBtn = cardNeedsContinue
-      ? '<button type="button" class="btn secondary" data-act="cards-continue">Try another pair</button>'
-      : '';
     app.innerHTML =
       headerBar('Pet cards', { back: true }) +
-      '<main class="panel party">' +
+      '<main class="panel party fit-col">' +
       '<p class="lede">' + (limited
-        ? 'The cards are resting. You can spin, dance, or head home.'
-        : 'Turn two cards. Matching animal friends stay up.') + '</p>' +
+        ? 'The cards are resting. Spin, dance, or head home.'
+        : 'Turn two cards. Matches stay up.') + '</p>' +
       board +
-      continueBtn +
-      (partyNote ? '<div class="feedback good" role="status"><p>' + esc(partyNote) + '</p></div>' : '') +
-      '<button type="button" class="btn ghost" data-act="back">Back to the party</button>' +
       '</main>';
   }
 
@@ -955,17 +1087,15 @@
       return '<div class="reel">' + PQParty.renderIcon(icon) + '</div>';
     }).join('');
     var spinBtn = left > 0
-      ? '<button type="button" class="btn primary lg" data-act="do-spin">Spin</button>'
-      : '<p class="lede">The spinner is resting. You can still dance, hug a friend, or head home.</p>';
+      ? '<button type="button" class="btn primary" data-act="do-spin">🎰 Spin</button>'
+      : '<p class="lede">The spinner is resting. Dance or head home.</p>';
     app.innerHTML =
-      headerBar('Prize spinner', { back: true }) +
-      '<main class="panel party">' +
-      '<p class="lede">Every spin shares a prize. Matching pictures bring a special decoration. Nothing is lost.</p>' +
+      headerBar('Spinner', { back: true }) +
+      '<main class="panel party fit-col">' +
+      '<p class="lede">Every spin shares a prize. Nothing is lost.</p>' +
       '<div class="reels" aria-hidden="true">' + reels + '</div>' +
       spinBtn +
-      '<p class="plain-note">Spins left today: ' + left + '.</p>' +
-      (partyNote ? '<div class="feedback good" role="status"><p>' + esc(partyNote) + '</p></div>' : '') +
-      '<button type="button" class="btn ghost" data-act="back">Back to the party</button>' +
+      '<p class="week-hint">Spins left today: ' + left + '.</p>' +
       '</main>';
   }
 
@@ -975,19 +1105,20 @@
       state._practiceTask = nextPracticeTask();
     }
     var task = state._practiceTask;
+    var gentle = feedback && feedback.kind !== 'good' ? hintStripHtml() : '';
     app.innerHTML =
-      headerBar('Extra practice', { back: true }) +
-      '<main class="panel quest">' +
-      hintStripHtml() +
-      '<p class="lede center">Just for fun — this does not change today’s quest.</p>' +
+      headerBar('Extra tables', { back: true }) +
+      '<main class="panel quest fit-col">' +
+      gentle +
+      '<p class="week-hint">Just for fun. Today’s quest stays the same.</p>' +
       renderMathTask(task) +
       '</main>';
   }
 
   function learnFeedback() {
-    if (!learn || (!learn.note && !learn.hint)) return '';
-    return '<div class="feedback gentle" role="status"><p>' + esc(learn.note || '') + '</p>' +
-      (learn.hint ? '<p class="hint">' + esc(learn.hint) + '</p>' : '') + '</div>';
+    if (!learn || !learn.hint) return '';
+    return '<div class="hint-strip gentle" role="status"><p>' + esc(learn.note || 'Not yet.') + '</p>' +
+      '<p class="hint">' + esc(learn.hint) + '</p></div>';
   }
 
   function plantSvg(grown) {
@@ -1013,7 +1144,7 @@
       var step = progress.step || 0;
       if (step <= 0) {
         return '<p class="lede">' + esc(play.observe) + '</p>' + plantSvg(false) +
-          '<button type="button" class="btn primary lg" data-act="learn-continue">I looked</button>';
+          '<button type="button" class="btn primary" data-act="learn-continue">👀 I looked</button>';
       }
       if (step === 1) {
         return '<h2 class="question">' + esc(play.predict.q) + '</h2><div class="choices">' +
@@ -1080,11 +1211,18 @@
     var house = PQWorld.getHouse(activity.id);
     var body = '';
     if (progress.phase === 'read') {
+      var pages = chunkText(activity.reading || '');
+      learnStep = clampPage(learnStep, pages.length);
+      var last = learnStep >= pages.length - 1;
       var speak = PQAudio.canSpeak()
-        ? '<button type="button" class="btn secondary" data-act="read-aloud">Read aloud</button>'
+        ? '<button type="button" class="btn secondary" data-act="read-aloud">🔊 Read</button>'
         : '';
-      body = passageBlocks(activity.reading) + '<div class="row-actions">' + speak +
-        '<button type="button" class="btn primary lg" data-act="learn-continue">I read it</button></div>';
+      var next = last
+        ? '<button type="button" class="btn primary" data-act="learn-continue">✅ I read it</button>'
+        : '<button type="button" class="btn primary" data-act="learn-next">➡️ Next</button>';
+      body = '<p class="passage">' + esc(pages[learnStep] || '') + '</p>' +
+        pagerHtml(learnStep, pages.length, 'learn-step') +
+        '<div class="action-grid">' + speak + next + '</div>';
     } else if (progress.phase === 'ask') {
       var q = activity.questions[progress.qIndex];
       body = q
@@ -1097,12 +1235,10 @@
     }
     app.innerHTML =
       headerBar(house ? house.title : activity.title, { back: true }) +
-      '<main class="panel">' +
-      '<div class="room-wrap">' + PQWorld.renderRoomSvg(activity.id, state) + '</div>' +
+      '<main class="panel fit-col">' +
       '<h2>' + esc(activity.title) + '</h2>' +
-      body +
       learnFeedback() +
-      '<button type="button" class="btn ghost" data-act="town">All done / back to town</button>' +
+      body +
       '</main>';
   }
 
@@ -1146,19 +1282,16 @@
         '<div class="sol-top"><div class="sol-foundations" aria-label="Piles">' + foundations + '</div>' +
         '<div class="sol-draw">' + solCard(waste, 'sol-waste', '') +
         '<button type="button" class="btn secondary" data-act="sol-draw">' +
-        (solitaire.stock.length ? 'Draw' : 'Turn pile') + '</button></div></div>' +
-        '<div class="sol-table">' + columns + '</div>' +
-        '<button type="button" class="btn secondary" data-act="sol-hint">Need a hand?</button>' +
-        (solitaire.won ? '<p class="lede">All done. Every pile is built.</p>' : '');
+        (solitaire.stock.length ? 'Draw' : 'Turn pile') + '</button>' +
+        '<button type="button" class="btn secondary" data-act="sol-hint">💡 Hint</button></div></div>' +
+        '<div class="sol-table">' + columns + '</div>';
     }
     app.innerHTML =
       headerBar('Game hall', { back: true }) +
-      '<main class="panel">' +
-      '<div class="room-wrap">' + PQWorld.renderRoomSvg('parlor', state) + '</div>' +
-      '<p class="lede">Build each pile from ace upward. You can leave whenever you like.</p>' +
+      '<main class="panel fit-col">' +
+      (solitaireHint ? '<div class="hint-strip gentle" role="status"><p>' + esc(solitaireHint) + '</p></div>' : '') +
+      '<p class="week-hint">Build each pile from ace up.</p>' +
       board +
-      (solitaireNote ? '<div class="feedback good" role="status"><p>' + esc(solitaireNote) + '</p></div>' : '') +
-      '<button type="button" class="btn primary lg" data-act="town">All done / back to town</button>' +
       '</main>';
   }
 
@@ -1232,48 +1365,53 @@
     var note = settingsNote
       ? '<p class="settings-note" role="status">' + esc(settingsNote) + '</p>'
       : '';
-    var readyBlock = readyCardHtml(true);
-
+    var tab = settingsTab || 'rank';
+    var body = '';
+    if (tab === 'lessons') {
+      body =
+        '<p class="plain-note">What to practice. Still one short quest.</p>' +
+        focusButton('addition', '➕ Addition') +
+        focusButton('subtraction', '➖ Subtraction') +
+        focusButton('multiplication', '✖️ Tables') +
+        focusButton('reading', '📖 Reading') +
+        partButton('warmup', 'Warmup') +
+        partButton('reading', 'Story') +
+        partButton('multiply', 'Times tables') +
+        note;
+    } else if (tab === 'tables') {
+      body =
+        '<p class="plain-note">Which tables to use. At least one stays on.</p>' +
+        '<div class="table-grid">' + chips + '</div>' +
+        '<p class="week-hint">A quest already started stays until tomorrow.</p>' +
+        note;
+    } else if (tab === 'grownups') {
+      body =
+        '<p class="plain-note">Sound</p>' +
+        '<button type="button" class="btn secondary" data-act="toggle-sound">' +
+        (state.soundOn ? '♪ Sound on' : '🔇 Sound off') + '</button>' +
+        '<button type="button" class="btn danger" data-act="reset-confirm">Reset all progress</button>' +
+        '<p class="fine-print">Clears the pet, quests, and history on this device.</p>';
+    } else {
+      body =
+        '<p class="plain-note">Scout is the gentlest. Champion is the fullest. It changes only when you pick it.</p>' +
+        '<div class="rank-list">' + ranks + '</div>' +
+        readyCardHtml(true) +
+        note;
+    }
+    function tabBtn(id, label) {
+      return '<button type="button" class="btn ' + (tab === id ? 'primary' : 'secondary') +
+        '" data-act="settings-tab" data-tab="' + id + '">' + label + '</button>';
+    }
     app.innerHTML =
       headerBar('Settings', { back: true }) +
-      '<main class="panel">' +
-      '<label class="toggle-row">' +
-      '<span>Sound</span>' +
-      '<button type="button" class="btn secondary" data-act="toggle-sound">' +
-      (state.soundOn ? 'On' : 'Off') +
-      '</button>' +
-      '</label>' +
-      '<section class="course-settings">' +
-      '<h2 class="section-title">Adventure rank</h2>' +
-      '<p class="plain-note">Pick the rank that feels right. Scout is the gentlest. Champion is the fullest. A smaller rank is always okay, and it changes only when you choose it.</p>' +
-      '<div class="rank-list">' +
-      ranks +
+      '<main class="panel settings fit-col">' +
+      '<div class="tabs">' +
+      tabBtn('rank', 'Rank') +
+      tabBtn('lessons', 'Lessons') +
+      tabBtn('tables', 'Tables') +
+      tabBtn('grownups', 'Grown-ups') +
       '</div>' +
-      readyBlock +
-      '<h2 class="section-title">Lesson focus</h2>' +
-      '<p class="plain-note">Choose what to practice. She still gets about one short quest. A quiet subject today is okay. Times tables below choose which facts to use when multiplication is on.</p>' +
-      focusButton('addition', 'Addition') +
-      focusButton('subtraction', 'Subtraction') +
-      focusButton('multiplication', 'Multiplication') +
-      focusButton('reading', 'Reading') +
-      '<h2 class="section-title">Daily quest parts</h2>' +
-      '<p class="plain-note">These turn a whole part on or off. Lesson focus chooses addition or subtraction inside warmup, and how much reading or times tables to include.</p>' +
-      partButton('warmup', 'Warmup math') +
-      partButton('reading', 'A pet story') +
-      partButton('multiply', 'Times tables practice') +
-      '<h2 class="section-title">Times tables</h2>' +
-      '<p class="plain-note">Choose which tables to practice. At least one stays on. A lower rank uses the friendlier ones first.</p>' +
-      '<div class="table-grid">' +
-      chips +
-      '</div>' +
-      '<p class="plain-note">If today’s quest has not been started, these choices update it now. A quest already started stays the same until tomorrow.</p>' +
-      note +
-      '</section>' +
-      '<div class="danger-zone">' +
-      '<p class="lede">Parent options</p>' +
-      '<button type="button" class="btn danger" data-act="reset-confirm">Reset all progress…</button>' +
-      '<p class="fine-print">Clears pet, quests, and practice history saved on this device. Cannot be undone.</p>' +
-      '</div>' +
+      '<div class="tab-body">' + body + '</div>' +
       '</main>';
   }
 
@@ -1290,14 +1428,13 @@
       : '<p class="plain-note">The general store appears after a quest. Your coins wait safely until then.</p>';
     app.innerHTML =
       headerBar('Bank', { back: true }) +
-      '<main class="panel bank">' +
+      '<main class="panel bank fit-col">' +
       PQBank.piggySvg() +
       '<h2>' + coins + ' coins</h2>' +
-      '<p class="lede">Coins come from quests, correct answers, games, and visits. A mistake never takes coins away.</p>' +
+      '<p class="lede">Coins are gifts for playing. A mistake never takes them away.</p>' +
       calendarHtml() +
       shop +
-      '<button type="button" class="btn secondary" data-act="open-album">Sticker book</button>' +
-      '<button type="button" class="btn secondary" data-act="town">All done / back to town</button>' +
+      '<button type="button" class="btn secondary" data-act="open-album">📒 Stickers</button>' +
       '</main>';
   }
 
@@ -1310,20 +1447,24 @@
     var coins = PQBank.getCoins(state);
     if (!shopItemId) {
       var items = PQShop.catalog(state);
-      var shelf = items.length
-        ? items.map(function (item) {
+      var per = (window.innerWidth || 390) >= 700 ? 8 : 6;
+      var pages = pageCount(items.length || 1, per);
+      shelfPage = clampPage(shelfPage, pages);
+      var slice = items.slice(shelfPage * per, shelfPage * per + per);
+      var shelf = slice.length
+        ? slice.map(function (item) {
           return '<button type="button" class="btn secondary shop-item" data-act="shop-item" data-item="' +
-            item.id + '">' + esc(item.name) + ' · ' + item.price + ' coins</button>';
+            item.id + '">' + esc(String(item.name).replace(/^an?\s+/i, '')) + ' · ' + item.price + '</button>';
         }).join('')
         : '<p class="lede">The shelves are resting. You already brought these things home.</p>';
+      var gentleShop = shopNote ? '<div class="hint-strip gentle" role="status"><p>' + esc(shopNote) + '</p></div>' : '';
       app.innerHTML =
-        headerBar('General store', { back: true }) +
-        '<main class="panel shop">' +
-        (shopNote ? '<div class="hint-strip good" role="status"><p>' + esc(shopNote) + '</p></div>' : '') +
-        '<div class="room-wrap">' + PQWorld.renderRoomSvg('store', state) + '</div>' +
-        '<p class="lede">You have ' + coins + ' coins. Pick something, then make the amount.</p>' +
-        shelf +
-        '<button type="button" class="btn secondary" data-act="town">All done / back to town</button>' +
+        headerBar('Shop', { back: true }) +
+        '<main class="panel shop fit-col">' +
+        gentleShop +
+        '<p class="lede">🪙 ' + coins + ' coins. Pick something, then make the price.</p>' +
+        '<div class="shelf-grid">' + shelf + '</div>' +
+        pagerHtml(shelfPage, items.length ? pages : 1, 'shelf-page') +
         '</main>';
       return;
     }
@@ -1351,7 +1492,7 @@
         '<div class="coin-row">' + coinBtns + '</div>' +
         '<p class="lede">Picked: ' + picked + '</p>' +
         '<div class="coin-picked">' + pickedRow + '</div>' +
-        '<button type="button" class="btn primary lg" data-act="shop-pay">Use these coins</button>';
+        '<button type="button" class="btn primary" data-act="shop-pay">🪙 Use these coins</button>';
     } else {
       var answer = shopProblem.answer;
       var options = [answer, answer + 1, Math.max(0, answer - 1), answer + 2];
@@ -1375,13 +1516,13 @@
         '<div class="choices">' + buttons + '</div>';
     }
     app.innerHTML =
-      headerBar('Pay for it', { back: true }) +
-      '<main class="panel shop">' +
+      headerBar('Pay', { back: true }) +
+      '<main class="panel shop fit-col">' +
       (shopNote ? '<div class="hint-strip gentle" role="status"><p>' + esc(shopNote) + '</p></div>' : '') +
       '<p class="eyebrow">' + esc(item.name) + ' · ' + item.price + ' coins</p>' +
-      '<p class="lede">Bank: ' + coins + ' coins</p>' +
+      '<p class="lede">Bank: ' + coins + '</p>' +
       body +
-      '<button type="button" class="btn secondary" data-act="shop-back">Back to the shelves</button>' +
+      '<button type="button" class="btn secondary" data-act="shop-back">⬅️ Shelves</button>' +
       '</main>';
   }
 
@@ -1394,10 +1535,12 @@
     if (!step) {
       app.innerHTML =
         headerBar(gameRound.title, { back: true }) +
-        '<main class="panel">' +
-        '<div class="hint-strip good" role="status"><p>You finished. ' + gameRound.reward + ' coins go in the bank.</p></div>' +
-        '<div class="room-wrap">' + PQWorld.renderRoomSvg(gameRound.place, state) + '</div>' +
-        '<button type="button" class="btn primary lg" data-act="town">All done / back to town</button>' +
+        '<main class="panel fit-col">' +
+        '<div class="pet-face">' +
+        PQPets.renderPetSvg(state.petId, state.growthStage || 0, { label: PQPets.displayName(state), mood: 'happy' }) +
+        '</div>' +
+        '<h2>You finished</h2>' +
+        '<p class="lede">' + gameRound.reward + ' coins go in the bank.</p>' +
         '</main>';
       return;
     }
@@ -1407,30 +1550,29 @@
     }).join('');
     app.innerHTML =
       headerBar(gameRound.title, { back: true }) +
-      '<main class="panel game">' +
+      '<main class="panel game fit-col">' +
       (shopNote ? '<div class="hint-strip gentle" role="status"><p>' + esc(shopNote) + '</p></div>' : '') +
-      '<div class="room-wrap room-compact">' + PQWorld.renderRoomSvg(gameRound.place, state) + '</div>' +
       (step.detail ? '<div class="recipe-card"><p>' + esc(step.detail) + '</p></div>' : '') +
       '<h2 class="question">' + esc(step.prompt) + '</h2>' +
       '<div class="choices">' + choices + '</div>' +
-      '<button type="button" class="btn secondary" data-act="town">All done / back to town</button>' +
       '</main>';
   }
 
   function renderAlbum(app) {
     var book = PQDays.collection(state);
-    var stickers = book.stickers.length
-      ? book.stickers.map(function (sticker) {
-        return '<li>' + esc(sticker.name) + '</li>';
-      }).join('')
-      : '<li>Your book is ready for the first sticker.</li>';
+    var list = book.stickers.length ? book.stickers : [{ name: 'Your book is ready for the first sticker.' }];
+    var per = 5;
+    var pages = pageCount(list.length, per);
+    albumPage = clampPage(albumPage, pages);
+    var stickers = list.slice(albumPage * per, albumPage * per + per).map(function (sticker) {
+      return '<li>' + esc(sticker.name) + '</li>';
+    }).join('');
     app.innerHTML =
-      headerBar('Sticker book', { back: true }) +
-      '<main class="panel">' +
-      '<p class="lede">You have ' + book.decor + (book.decor === 1 ? ' decoration' : ' decorations') + ' to place.</p>' +
+      headerBar('Stickers', { back: true }) +
+      '<main class="panel fit-col">' +
+      '<p class="lede">' + book.decor + (book.decor === 1 ? ' decoration' : ' decorations') + ' to place.</p>' +
       '<ul class="soft-list">' + stickers + '</ul>' +
-      '<p class="plain-note">Only things you have found are listed here.</p>' +
-      '<button type="button" class="btn secondary" data-act="town">All done / back to town</button>' +
+      pagerHtml(albumPage, pages, 'album-page') +
       '</main>';
   }
 
@@ -1456,18 +1598,25 @@
     var groups = PQWorld.wheelGroups(state);
     if (!groups.length) return '';
     if (wheelList) {
-      var blocks = groups.map(function (group) {
-        var buttons = group.items.map(function (item) {
-          return '<button type="button" class="btn secondary wheel-item" data-act="wheel-pick" data-item="' +
-            item.id + '">' + PQWorld.renderItemIcon(item) + '<span>' + esc(item.name) + '</span></button>';
-        }).join('');
-        return '<section class="wheel-group"><h3>' + esc(group.label) + ' · ' + group.count + '</h3>' + buttons + '</section>';
+      var flat = [];
+      groups.forEach(function (group) {
+        group.items.forEach(function (item) { flat.push(item); });
+      });
+      var perList = 6;
+      var listPages = pageCount(flat.length, perList);
+      wheelPage = clampPage(wheelPage, listPages);
+      var listSlice = flat.slice(wheelPage * perList, wheelPage * perList + perList);
+      var blocks = listSlice.map(function (item) {
+        return '<button type="button" class="btn secondary wheel-item" data-act="wheel-pick" data-item="' +
+          item.id + '">' + PQWorld.renderItemIcon(item) + '<span>' + esc(shortItemName(item.name)) + '</span></button>';
       }).join('');
       return '<div class="wheel-pop" role="dialog" aria-label="My items">' +
         '<div class="wheel-top"><strong>My items</strong>' +
-        '<button type="button" class="btn secondary" data-act="wheel-mode">Wheel</button>' +
+        '<button type="button" class="btn secondary" data-act="wheel-mode">🎡 Wheel</button>' +
         '<button type="button" class="btn ghost" data-act="wheel-close">Close</button></div>' +
-        '<div class="wheel-list">' + blocks + '</div></div>';
+        '<div class="wheel-list">' + blocks + '</div>' +
+        pagerHtml(wheelPage, listPages, 'wheel-page') +
+        '</div>';
     }
     var source = null;
     var i;
@@ -1490,31 +1639,33 @@
       return '<button type="button" class="wheel-spot" style="left:' + left + '%;top:' + top + '%" data-act="wheel-cat" data-cat="' +
         entry.id + '"><strong>' + esc(entry.label) + '</strong><em>' + entry.count + '</em></button>';
     }).join('');
-    var more = pages > 1
-      ? '<button type="button" class="btn secondary" data-act="wheel-page">More</button>'
-      : '';
     var center = source
-      ? '<button type="button" class="wheel-center" data-act="wheel-back">Groups</button>'
+      ? '<button type="button" class="wheel-center" data-act="wheel-back">Back</button>'
       : '<button type="button" class="wheel-center" data-act="wheel-close">Close</button>';
     var title = source ? source.label + ' · ' + source.count : 'Your things';
     return '<div class="wheel-pop" role="dialog" aria-label="Things you can place">' +
       '<div class="wheel-top"><strong>' + esc(title) + '</strong>' +
-      '<button type="button" class="btn secondary" data-act="wheel-mode">My items</button>' +
-      more + '</div>' +
-      '<div class="wheel-ring">' + spots + center + '</div></div>';
+      '<button type="button" class="btn secondary" data-act="wheel-mode">📋 Items</button></div>' +
+      '<div class="wheel-ring">' + spots + center + '</div>' +
+      pagerHtml(wheelPage, pages, 'wheel-page') +
+      '</div>';
   }
 
   function renderLog(app) {
     PQWorld.ensureWorld(state);
-    var rows = (state.world.log || []).map(function (entry) {
+    var entries = (state.world.log || []).slice();
+    if (!entries.length) entries = [{ text: 'Nothing new yet. Play a little and notes will show up here.' }];
+    var per = 4;
+    var pages = pageCount(entries.length, per);
+    logPage = clampPage(logPage, pages);
+    var rows = entries.slice(logPage * per, logPage * per + per).map(function (entry) {
       return '<li>' + esc(entry.text) + '</li>';
     }).join('');
-    if (!rows) rows = '<li>Nothing new yet. Play a little and notes will show up here.</li>';
     app.innerHTML =
       headerBar('What happened', { back: true }) +
-      '<main class="panel">' +
+      '<main class="panel fit-col">' +
       '<ul class="soft-list log-list">' + rows + '</ul>' +
-      '<button type="button" class="btn secondary" data-act="back">Close</button>' +
+      pagerHtml(logPage, pages, 'log-page') +
       '</main>';
   }
 
@@ -1594,10 +1745,7 @@
       return '<button type="button" class="memory-card' + (up ? ' up' : '') + (card.matched ? ' matched' : '') +
         '" data-act="memory-flip" data-idx="' + index + '">' + (up ? esc(card.text) : '?') + '</button>';
     }).join('');
-    var again = board.needsContinue
-      ? '<button type="button" class="btn secondary" data-act="memory-continue">Turn them back</button>'
-      : '';
-    return '<p class="lede">Match each word with its meaning.</p><div class="memory-grid">' + cards + '</div>' + again;
+    return '<p class="week-hint">Match each word with its meaning.</p><div class="memory-grid">' + cards + '</div>';
   }
 
   function renderArray() {
@@ -1615,10 +1763,12 @@
     }
     return '<h2 class="question">' + esc(board.prompt.prompt) + '</h2>' +
       '<div class="array-build" aria-hidden="true">' + rows + '</div>' +
-      '<button type="button" class="btn primary lg" data-act="array-act" data-array="dot">Add a dot</button>' +
-      '<button type="button" class="btn secondary" data-act="array-act" data-array="row">Next row</button>' +
-      '<button type="button" class="btn secondary" data-act="array-act" data-array="back">Take one back</button>' +
-      '<button type="button" class="btn secondary" data-act="array-act" data-array="check">This is it</button>';
+      '<div class="array-actions">' +
+      '<button type="button" class="btn primary" data-act="array-act" data-array="dot">➕ Add a dot</button>' +
+      '<button type="button" class="btn secondary" data-act="array-act" data-array="row">➡️ Next row</button>' +
+      '<button type="button" class="btn secondary" data-act="array-act" data-array="back">⬅️ Take one back</button>' +
+      '<button type="button" class="btn secondary" data-act="array-act" data-array="check">✅ This is it</button>' +
+      '</div>';
   }
 
   function renderBoard(app) {
@@ -1635,23 +1785,38 @@
     var done = board.finished || board.done;
     app.innerHTML =
       headerBar(board.title, { back: true }) +
-      '<main class="panel game">' +
-      (board.banner ? '<div class="hint-strip good" role="status"><p>' + esc(board.banner) + '</p></div>' : '') +
+      '<main class="panel game fit-col">' +
+      (board.hint ? '<div class="hint-strip gentle" role="status"><p>' + esc(board.hint) + '</p></div>' : '') +
       body +
-      (done ? '<button type="button" class="btn primary lg" data-act="board-again">Play again</button>' : '') +
-      '<button type="button" class="btn secondary" data-act="back">All done / back</button>' +
+      (done ? '<button type="button" class="btn primary" data-act="board-again">🔁 Play again</button>' : '') +
       '</main>';
   }
 
   function settleBoard(result) {
     if (!board || !result) return;
+    if (result.needsContinue && board.id === 'memory') {
+      board.hint = result.hint || '';
+      queueToast('gentle', result.message || 'Not a pair yet.', '', function () {
+        if (board && board.needsContinue) {
+          PQBoards.memoryContinue(board);
+          board.hint = '';
+          render();
+        }
+      });
+      PQAudio.play('gentle', state.soundOn);
+      save();
+      render();
+      return;
+    }
     var quiet = result.ok && !result.done && (
       board.id === 'array' ||
       board.id === 'bingo' ||
       (board.id === 'memory' && !result.matched)
     );
+    if (result.ok) board.hint = '';
+    else board.hint = result.hint || result.message || '';
     if (!result.ok) {
-      queueToast('gentle', result.message || 'Not yet.', result.hint || '');
+      queueToast('gentle', result.message || 'Not yet.', '');
       PQAudio.play('gentle', state.soundOn);
     } else if (result.done && !board.rewarded) {
       var kidWon = result.winner !== 2 && result.winner !== 'draw';
@@ -1704,6 +1869,12 @@
   }
 
   function onPointerDown(e) {
+    var map = e.target.closest ? e.target.closest('.town-map') : null;
+    if (map && screen === 'home') {
+      townSwipe = { x: e.clientX, y: e.clientY, pid: e.pointerId };
+    } else {
+      townSwipe = null;
+    }
     var stage = e.target.closest ? e.target.closest('.room-stage') : null;
     if (!stage || screen !== 'house') return;
     var item = e.target.closest ? e.target.closest('.placed-item') : null;
@@ -1756,6 +1927,16 @@
   }
 
   function onPointerUp(e) {
+    if (townSwipe && e.pointerId === townSwipe.pid) {
+      var swipeDx = e.clientX - townSwipe.x;
+      var swipeDy = e.clientY - townSwipe.y;
+      townSwipe = null;
+      if (screen === 'home' && homePane === 'map' && Math.abs(swipeDx) > 56 && Math.abs(swipeDx) > Math.abs(swipeDy)) {
+        ignoreClick = true;
+        setTimeout(function () { ignoreClick = false; }, 350);
+        turnTown(swipeDx < 0 ? 1 : -1);
+      }
+    }
     if (!drag || (e.pointerId != null && e.pointerId !== drag.pid)) return;
     var info = drag;
     drag = null;
@@ -1800,9 +1981,101 @@
     }
     if (act === 'toast-speak') {
       if (toast) {
+        notices.pause();
         var spoken = toast.message + (toast.hint ? '. ' + toast.hint : '');
-        PQAudio.speak(spoken, true);
+        var started = PQAudio.speak(spoken, true, function () {
+          notices.resume();
+        });
+        if (!started) notices.resume();
       }
+      return;
+    }
+    if (act === 'home-pane') {
+      homePane = t.getAttribute('data-pane') || 'map';
+      notePage = 0;
+      render();
+      return;
+    }
+    if (act === 'town-page') {
+      var townPages = pageCount(PQWorld.visiblePlaces(state).length, townPerPage());
+      townPage = readPager(t, townPage, townPages);
+      render();
+      return;
+    }
+    if (act === 'note-page') {
+      notePage = readPager(t, notePage, 12);
+      render();
+      return;
+    }
+    if (act === 'action-page') {
+      actionPage = readPager(t, actionPage, 12);
+      render();
+      return;
+    }
+    if (act === 'settings-tab') {
+      settingsTab = t.getAttribute('data-tab') || 'rank';
+      render();
+      return;
+    }
+    if (act === 'read-next') {
+      readStep += 1;
+      render();
+      return;
+    }
+    if (act === 'read-step') {
+      readStep = readPager(t, readStep, 12);
+      render();
+      return;
+    }
+    if (act === 'story-next') {
+      storyStep = 1;
+      render();
+      return;
+    }
+    if (act === 'peek-story') {
+      peeking = true;
+      readStep = 0;
+      render();
+      return;
+    }
+    if (act === 'peek-back') {
+      peeking = false;
+      render();
+      return;
+    }
+    if (act === 'book-next') {
+      bookStep += 1;
+      render();
+      return;
+    }
+    if (act === 'book-step') {
+      bookStep = readPager(t, bookStep, 12);
+      render();
+      return;
+    }
+    if (act === 'learn-next') {
+      learnStep += 1;
+      render();
+      return;
+    }
+    if (act === 'learn-step') {
+      learnStep = readPager(t, learnStep, 12);
+      render();
+      return;
+    }
+    if (act === 'shelf-page') {
+      shelfPage = readPager(t, shelfPage, 8);
+      render();
+      return;
+    }
+    if (act === 'album-page') {
+      albumPage = readPager(t, albumPage, 12);
+      render();
+      return;
+    }
+    if (act === 'log-page') {
+      logPage = readPager(t, logPage, 12);
+      render();
       return;
     }
     if (act === 'open-log') {
@@ -1838,7 +2111,7 @@
       return;
     }
     if (act === 'wheel-page') {
-      wheelPage += 1;
+      wheelPage = readPager(t, wheelPage, 12);
       render();
       return;
     }
@@ -2155,11 +2428,11 @@
       if (!solitaire) return;
       var hintMove = PQSolitaire.findMove(solitaire);
       if (!hintMove) {
-        solitaireNote = PQSolitaire.hintMessage(solitaire);
+        solitaireHint = PQSolitaire.hintMessage(solitaire);
         render();
         return;
       }
-      solitaireNote = hintMove.say;
+      solitaireHint = '';
       applySol(hintMove);
       return;
     }
@@ -2176,7 +2449,9 @@
       if (index === pile.length - 1) {
         var lifted = PQSolitaire.applyMove(solitaire, { type: 'tableau-foundation', column: col });
         if (lifted.ok) {
-          solitaireNote = lifted.message;
+          solitaireHint = '';
+          if (lifted.message) queueToast('good', lifted.message, '');
+          PQAudio.play(lifted.won ? 'celebrate' : 'tap', state.soundOn);
           save();
           render();
           return;
@@ -2342,13 +2617,15 @@
         PQBank.addCoins(state, gameRound.reward || 8);
         PQAudio.play('celebrate', state.soundOn);
         shopNote = '';
-        queueToast('good', 'You finished. ' + (gameRound.reward || 8) + ' coins go in the bank.', '');
+        queueToast('good', 'You finished. ' + (gameRound.reward || 8) + ' coins go in the bank.', '', function () {
+          if (screen === 'game') go(houseId ? 'house' : 'home');
+        });
       } else if (gameResult.ok) {
         shopNote = '';
         PQAudio.play('correct', state.soundOn);
       } else {
         shopNote = gameResult.hint || gameResult.message;
-        queueToast('gentle', gameResult.message || 'Not yet.', gameResult.hint || '');
+        queueToast('gentle', gameResult.message || 'Not yet.', '');
         PQAudio.play('gentle', state.soundOn);
       }
       save();
@@ -2392,7 +2669,7 @@
       if (act === 'shop-value') payInput.value = t.getAttribute('data-value');
       var bought = PQShop.buy(state, shopItemId, payInput, state.courses && state.courses.grade);
       if (bought.ok) {
-        shopNote = bought.message;
+        shopNote = '';
         shopItemId = null;
         shopProblem = null;
         shopCoins = [];
@@ -2400,7 +2677,7 @@
         PQAudio.play('celebrate', state.soundOn);
       } else {
         shopNote = bought.hint;
-        queueToast('gentle', 'Not yet.', bought.hint || '');
+        queueToast('gentle', 'Not yet.', '');
         PQAudio.play('gentle', state.soundOn);
       }
       save();
@@ -2485,6 +2762,7 @@
     }
     if (act === 'next-book') {
       bookIndex += 1;
+      bookStep = 0;
       PQAudio.stopSpeak();
       render();
       return;
@@ -2590,6 +2868,9 @@
     cardNeedsContinue = false;
     save();
     go('celebrate');
+    armLeave(function () {
+      if (screen === 'celebrate') go('home');
+    });
   }
 
   function beginCards() {
@@ -2612,16 +2893,27 @@
     if (cardNeedsContinue) return;
     var result = PQParty.flipCard(cardDeck, index);
     cardDeck = result.cards;
-    partyNote = result.message;
+    partyNote = '';
     cardNeedsContinue = !!result.needsContinue;
-    if (result.cleared && !cardRewarded) {
+    if (result.needsContinue) {
+      queueToast('gentle', result.message || 'Not a pair.', '', function () {
+        if (cardDeck && cardNeedsContinue) {
+          PQParty.turnBack(cardDeck);
+          cardNeedsContinue = false;
+          render();
+        }
+      });
+    } else if (result.cleared && !cardRewarded) {
       cardRewarded = true;
       var award = PQParty.finishCardRound(state, PQStorage.localDateKey());
-      partyNote = award.message;
+      queueToast('good', award.message, '');
       save();
       PQAudio.play('party', state.soundOn);
     } else if (result.matched) {
+      queueToast('good', result.message || 'A pair.', '');
       PQAudio.play('correct', state.soundOn);
+    } else if (result.message) {
+      queueToast('good', result.message, '');
     }
     render();
   }
@@ -2629,7 +2921,8 @@
   function doSpin() {
     var result = PQParty.spin(state, Math.random, PQStorage.localDateKey());
     if (result.reels) spinReels = result.reels;
-    partyNote = result.message;
+    partyNote = '';
+    if (result.message) queueToast(result.prize ? 'good' : 'gentle', result.message, '');
     if (result.prize) {
       save();
       PQAudio.play(result.rare ? 'party' : 'spin', state.soundOn);
@@ -2650,11 +2943,12 @@
       'You hug ' + name + '. The friends stay close and quiet.'
     ];
     var lines = dance ? danceLines : hugLines;
-    partyNote = lines[partyStep % lines.length];
+    partyNote = '';
+    queueToast('good', lines[partyStep % lines.length], '');
     partyStep += 1;
     PQAudio.play('party', state.soundOn);
     if (screen !== 'party') go('party');
-    else render();
+    render();
   }
 
   function useHintToken() {
@@ -2959,8 +3253,14 @@
     if (!learn || !learn.activity) return;
     var result = PQLearn.act(learn.activity, learn.progress, input);
     learn.progress = result.progress;
-    learn.note = result.message;
-    learn.hint = result.hint;
+    if (result.hint) {
+      learn.note = result.message || 'Not yet.';
+      learn.hint = result.hint;
+    } else {
+      learn.note = '';
+      learn.hint = '';
+      if (result.message) queueToast(result.done ? 'good' : 'good', result.message, '');
+    }
     if (result.message) PQAudio.play(result.done ? 'correct' : 'tap', state.soundOn);
     render();
   }
@@ -2988,8 +3288,14 @@
   function applySol(move) {
     if (!solitaire) return;
     var result = PQSolitaire.applyMove(solitaire, move);
-    solitaireNote = result.message;
-    if (result.ok) PQAudio.play(result.won ? 'celebrate' : 'tap', state.soundOn);
+    solitaireNote = result.message || '';
+    if (!result.ok) {
+      solitaireHint = result.message || 'Not yet.';
+    } else {
+      solitaireHint = '';
+      if (result.message) queueToast(result.won ? 'good' : 'good', result.message, '');
+      PQAudio.play(result.won ? 'celebrate' : 'tap', state.soundOn);
+    }
     render();
   }
 
@@ -3019,6 +3325,7 @@
       save();
       houseId = PQWorld.houseIdForMission(finishedMission, state) || houseId;
       roleplayNote = missionDoneCopy(finishedMission);
+      queueToast('good', roleplayNote, '');
       go('house');
       return;
     }
@@ -3060,14 +3367,254 @@
       .replace(/"/g, '&quot;');
   }
 
-  // Fix double-record bug in submitMath — rewrite carefully via patch after load
-  // Expose for debugging
+  function fillDemo() {
+    state.onboardingDone = true;
+    state.petId = state.petId || 'bunny';
+    state.petName = state.petName || 'Bunny';
+    if (!state.growthStage) state.growthStage = 2;
+    state.soundOn = true;
+    PQQuest.normalizeCourses(state);
+    PQWorld.ensureWorld(state);
+    state.world.questsFinished = Math.max(state.world.questsFinished || 0, 30);
+    state.world.activitiesDone = Math.max(state.world.activitiesDone || 0, 30);
+    if ((state.bank.coins || 0) < 24) state.bank.coins = 24;
+    PQWorld.checkPlaceUnlocks(state);
+    ['pet-bowl', 'red-rug', 'blue-lamp', 'fern-plant', 'toy-ball', 'star-poster', 'soft-pillow', 'wood-chair', 'cozy-basket', 'little-teapot'].forEach(function (id) {
+      if (state.world.unlocks.indexOf(id) === -1) state.world.unlocks.push(id);
+    });
+    if (!PQWorld.placementsFor(state, 'pet').length) PQWorld.placeItem(state, 'pet', 'red-rug');
+    PQQuest.ensureTodayQuest(state);
+    var today = PQStorage.localDateKey();
+    if (state.days.visitDates.indexOf(today) === -1) state.days.visitDates.push(today);
+  }
+
+  function taskAt(type, extra) {
+    fillDemo();
+    var tasks = state.daily.tasks || [];
+    var i;
+    for (i = 0; i < tasks.length; i++) {
+      if (tasks[i].type === type) {
+        state.daily.taskIndex = i;
+        tasks[i].cleared = false;
+        state.daily.completed = false;
+        return tasks[i];
+      }
+    }
+    var made = extra || { type: type, mission: 'warmup', prompt: '3 + 4', answer: 7, missCount: 0 };
+    made.type = type;
+    made.cleared = false;
+    tasks.unshift(made);
+    state.daily.tasks = tasks;
+    state.daily.taskIndex = 0;
+    state.daily.completed = false;
+    return made;
+  }
+
+  function preview(which) {
+    toastAfter = null;
+    if (notices.isOpen()) notices.dismiss();
+    which = which || 'town';
+    if (which === 'welcome') {
+      state.onboardingDone = false;
+      state.petId = null;
+      go('welcome');
+      return;
+    }
+    fillDemo();
+    if (which === 'town') {
+      homePane = 'map';
+      townPage = 0;
+      go('home');
+      return;
+    }
+    if (which === 'town-next') {
+      homePane = 'map';
+      townPage = 1;
+      go('home');
+      return;
+    }
+    if (which === 'today') {
+      homePane = 'today';
+      visitNote = 'The general store can wait. There is no rush. Today includes warmup math, a pet story, and times tables.';
+      go('home');
+      return;
+    }
+    if (which === 'week') {
+      homePane = 'week';
+      go('home');
+      return;
+    }
+    if (which === 'quest') {
+      taskAt('add', { type: 'add', mission: 'warmup', prompt: '6 + 7', answer: 13, a: 6, b: 7, missCount: 0 });
+      go('quest');
+      storyStep = 1;
+      render();
+      return;
+    }
+    if (which === 'story') {
+      var storyTask = taskAt('add', {
+        type: 'add', mission: 'warmup', prompt: '2 + 2', answer: 4, a: 2, b: 2, missCount: 0
+      });
+      storyTask.story = { text: 'Bunny finds 2 berries and then 2 more.', count: 4, icon: 'berry' };
+      go('quest');
+      storyStep = 0;
+      render();
+      return;
+    }
+    if (which === 'reading') {
+      taskAt('reading-pass', {
+        type: 'reading-pass',
+        mission: 'reading',
+        title: 'The Quiet Platform',
+        words: [{ word: 'platform', say: 'A platform is where you wait for a train.' }],
+        text: 'The train station was bright and not crowded. A board listed two trains. The red train would leave at 2 and stop by the pond.\n\nFern pointed at the blue line and then at the clock. There was still time. They sat on a bench and shared a small apple.\n\nWhen the blue train arrived, they let other riders step off first. Then they found two seats by a window.',
+        cleared: false
+      });
+      go('quest');
+      return;
+    }
+    if (which === 'question') {
+      taskAt('reading-q', {
+        type: 'reading-q',
+        mission: 'reading',
+        title: 'The Quiet Platform',
+        question: 'Which train should Bunny take to the beach?',
+        choices: ['The blue train', 'The red train', 'A boat', 'Neither train'],
+        answer: 0,
+        text: 'The blue train stops by the beach.',
+        missCount: 0,
+        cleared: false
+      });
+      go('quest');
+      return;
+    }
+    if (which === 'room') {
+      houseId = 'pet';
+      go('house');
+      wheelOpen = true;
+      wheelList = false;
+      wheelCat = null;
+      wheelPage = 0;
+      render();
+      return;
+    }
+    if (which === 'four' || which === 'race' || which === 'bingo' || which === 'memory' || which === 'array') {
+      state.courses.grade = 5;
+      state.courses.rank = 'champion';
+      houseId = which === 'memory' ? 'library' : (which === 'bingo' || which === 'array' ? 'school' : 'parlor');
+      board = PQBoards.create(which, state, function () { return 0.2; });
+      go('board');
+      return;
+    }
+    if (which === 'shop') {
+      shopItemId = null;
+      shopProblem = null;
+      shopNote = '';
+      go('shop');
+      return;
+    }
+    if (which === 'shop-pay') {
+      var shelfItem = PQShop.catalog(state)[0];
+      shopItemId = shelfItem ? shelfItem.id : null;
+      shopProblem = shelfItem ? PQShop.problemFor(shelfItem, state.courses.grade, function () { return 0.2; }) : null;
+      shopCoins = [];
+      shopNote = '';
+      go('shop');
+      return;
+    }
+    if (which === 'library') {
+      bookIndex = 0;
+      bookStep = 0;
+      go('library');
+      return;
+    }
+    if (which === 'settings' || which === 'settings-lessons' || which === 'settings-tables' || which === 'settings-grownups') {
+      settingsTab = which === 'settings' ? 'rank' : which.replace('settings-', '');
+      if (settingsTab === 'settings') settingsTab = 'rank';
+      go('settings');
+      return;
+    }
+    if (which === 'toast') {
+      homePane = 'map';
+      go('home');
+      queueToast('good', 'You get a paw-print sticker. It is saved on this device.', '');
+      render();
+      return;
+    }
+    if (which === 'party') {
+      go('party');
+      return;
+    }
+    if (which === 'party-cards') {
+      cardDeck = PQParty.createCardDeck(function () { return 0.4; });
+      cardNeedsContinue = false;
+      go('party-cards');
+      return;
+    }
+    if (which === 'bank') {
+      go('bank');
+      return;
+    }
+    if (which === 'album') {
+      go('album');
+      return;
+    }
+    if (which === 'log') {
+      if (!state.world.log.length) PQWorld.pushLog(state, 'You looked around the house.');
+      go('log');
+      return;
+    }
+    if (which === 'game') {
+      houseId = 'bakery';
+      gameRound = PQGames.roundFor('bakery', 2, function () { return 0.3; });
+      shopNote = '';
+      go('game');
+      return;
+    }
+    if (which === 'solitaire') {
+      state.courses.grade = 5;
+      houseId = 'parlor';
+      var opened = PQSolitaire.openGame(state, function () { return 0.4; }, PQStorage.localDateKey());
+      solitaire = opened.game;
+      solitaireHint = '';
+      go('solitaire');
+      return;
+    }
+    if (which === 'celebrate') {
+      go('celebrate');
+      return;
+    }
+    if (which === 'practice') {
+      state._practiceTask = null;
+      go('practice');
+      return;
+    }
+    if (which === 'pets') {
+      selectedPet = 'bunny';
+      go('pick-pet');
+      return;
+    }
+    if (which === 'learn') {
+      houseId = 'museum';
+      learn = null;
+      var activity = PQLearn.forPlace(state, 'museum');
+      if (activity) {
+        learn = { activity: activity, progress: PQLearn.begin(activity), note: '', hint: '', pick: null };
+        go('learn');
+      } else go('home');
+      return;
+    }
+    go('home');
+  }
+
   window.PetQuests = {
     boot: boot,
     getState: function () {
       return state;
     },
-    render: render
+    render: render,
+    preview: preview,
+    NOTICE_MS: PQNotices.NOTICE_MS
   };
 
   if (document.readyState === 'loading') {
