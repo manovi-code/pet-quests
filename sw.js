@@ -2,7 +2,7 @@
  * Pet Quests — offline shell for home screen.
  * Same-origin files only. No analytics and no outside network.
  */
-var CACHE = 'pet-quests-shell-5';
+var CACHE = 'pet-quests-shell-6';
 var FILES = [
   './',
   './index.html',
@@ -24,6 +24,10 @@ var FILES = [
   './js/days.js',
   './js/audio.js',
   './js/notices.js',
+  './js/stickers.js',
+  './js/closet.js',
+  './js/outings.js',
+  './js/arcade.js',
   './js/app.js',
   './assets/favicon.png',
   './assets/apple-touch-icon.png',

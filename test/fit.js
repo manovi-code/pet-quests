@@ -24,10 +24,12 @@ var SIZES = [
 var SCREENS = [
   'welcome', 'pets', 'town', 'town-next', 'today', 'week',
   'quest', 'reading', 'question', 'story',
-  'room', 'four', 'race', 'bingo', 'memory', 'array',
-  'shop', 'shop-pay', 'library',
+  'room', 'four', 'race', 'bingo', 'memory', 'memory-miss', 'array',
+  'hide', 'parade', 'treasure', 'sort',
+  'outing', 'closet', 'outside',
+  'shop', 'shop-pay', 'shop-clothes', 'library',
   'settings', 'settings-lessons', 'settings-tables', 'settings-grownups',
-  'toast', 'party', 'party-cards', 'bank', 'album', 'log',
+  'toast', 'party', 'party-cards', 'party-miss', 'bank', 'album', 'log',
   'game', 'solitaire', 'celebrate', 'practice', 'learn'
 ];
 

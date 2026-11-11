@@ -20,6 +20,7 @@
   var COLS = 7;
   var HOME = 12;
   var ESCORT_AFTER = 14;
+  var FLIP_BACK_MS = 1000;
 
   var HOSTS = {
     parlor: [
@@ -742,7 +743,7 @@
       matched: false,
       needsContinue: true,
       message: 'Not a pair yet.',
-      hint: 'Turn them back and try two that mean the same thing.',
+      hint: 'They will turn back in a moment. Then try two that mean the same thing.',
       game: game
     };
   }
@@ -758,9 +759,7 @@
     return game;
   }
 
-  function createArray(state, rng) {
-    rng = rng || Math.random;
-    var grade = gradeOf(state);
+  function arraySize(grade, rng) {
     var rows = 2;
     var cols = 2;
     if (grade <= 1) {
@@ -779,22 +778,78 @@
       rows = 4;
       cols = 4 + Math.floor(rng() * 4);
     }
-    return {
+    return { rows: rows, cols: cols };
+  }
+
+  function arrayStory(game) {
+    var pet = game.petName || 'Your pet';
+    return pet + ' wants ' + game.rows + ' rows of ' + game.cols + ' ' + game.treat + '.';
+  }
+
+  function createArray(state, rng) {
+    rng = rng || Math.random;
+    var grade = gradeOf(state);
+    var goal = 3 + Math.floor(rng() * 3);
+    var size = arraySize(grade, rng);
+    var treat = 'berry treats';
+    if (state && state.petId === 'puppy') treat = 'bone treats';
+    else if (state && state.petId === 'kitten') treat = 'fish treats';
+    else if (state && state.petId === 'owl') treat = 'seed treats';
+    var game = {
       id: 'array',
       title: 'Array Builder',
       grade: grade,
-      rows: rows,
-      cols: cols,
+      rows: size.rows,
+      cols: size.cols,
       built: [],
       done: false,
       rewarded: false,
-      hardest: rows * cols,
-      prompt: {
-        type: 'array',
-        prompt: 'Make ' + rows + ' rows of ' + cols + '.',
-        answer: rows * cols
-      }
+      goal: goal,
+      round: 0,
+      roundClear: false,
+      fact: '',
+      treat: treat,
+      petName: (state && state.petName) || 'Your pet',
+      pulse: null,
+      hardest: size.rows * size.cols
     };
+    game.story = arrayStory(game);
+    game.prompt = {
+      type: 'array',
+      prompt: game.story,
+      answer: size.rows * size.cols
+    };
+    return game;
+  }
+
+  function arrayHasMore(game) {
+    return !!(game && (game.round || 0) + 1 < (game.goal || 1));
+  }
+
+  function arrayAdvance(game, rng) {
+    if (!game) return game;
+    rng = rng || Math.random;
+    game.round = (game.round || 0) + 1;
+    if (game.round >= (game.goal || 1)) {
+      game.done = true;
+      return game;
+    }
+    var size = arraySize(game.grade, rng);
+    game.rows = size.rows;
+    game.cols = size.cols;
+    game.hardest = Math.max(game.hardest || 0, size.rows * size.cols);
+    game.built = [];
+    game.done = false;
+    game.roundClear = false;
+    game.fact = '';
+    game.pulse = null;
+    game.story = arrayStory(game);
+    game.prompt = {
+      type: 'array',
+      prompt: game.story,
+      answer: size.rows * size.cols
+    };
+    return game;
   }
 
   function arrayAct(game, action) {
@@ -812,7 +867,8 @@
         };
       }
       game.built[last] += 1;
-      return { ok: true, message: 'A dot joins the row.', game: game };
+      game.pulse = { row: last, col: game.built[last] - 1 };
+      return { ok: true, message: 'A treat joins the row.', game: game };
     }
     if (action === 'row') {
       if (game.built.length >= game.rows) {
@@ -858,7 +914,16 @@
         };
       }
       game.done = true;
-      return { ok: true, done: true, message: 'That array matches.', game: game };
+      game.roundClear = true;
+      var product = game.rows * game.cols;
+      game.fact = game.rows + ' × ' + game.cols + ' = ' + product;
+      return {
+        ok: true,
+        done: true,
+        fact: game.fact,
+        message: game.fact + '. That is ' + product + ' ' + game.treat + '.',
+        game: game
+      };
     }
     return { ok: false, message: 'Try one of the buttons.', hint: '', game: game };
   }
@@ -907,9 +972,12 @@
     answer: answer,
     dropFour: dropFour,
     tapBingo: tapBingo,
+    FLIP_BACK_MS: FLIP_BACK_MS,
     flipMemory: flipMemory,
     memoryContinue: memoryContinue,
     arrayAct: arrayAct,
+    arrayHasMore: arrayHasMore,
+    arrayAdvance: arrayAdvance,
     stepsFromAnswer: stepsFromAnswer,
     petStep: petStep,
     reward: reward,

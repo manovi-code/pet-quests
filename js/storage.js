@@ -125,6 +125,17 @@
         spins: 0,
         cardRounds: 0
       },
+      outfit: {
+        hat: '',
+        glasses: '',
+        scarf: '',
+        shirt: '',
+        shoes: '',
+        pack: ''
+      },
+      closet: {
+        owned: ['hat-sunny', 'scarf-red', 'shoes-cloud']
+      },
       daily: {
         dateKey: null,
         completed: false,
