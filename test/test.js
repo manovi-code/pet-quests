@@ -26,6 +26,7 @@ var PQStickers = require(path.join(root, 'stickers.js'));
 var PQCloset = require(path.join(root, 'closet.js'));
 var PQOutings = require(path.join(root, 'outings.js'));
 var PQArcade = require(path.join(root, 'arcade.js'));
+var PQRounds = require(path.join(root, 'rounds.js'));
 var fs = require('fs');
 
 var passed = 0;
@@ -1793,7 +1794,8 @@ test('app wires notices to a 3 second toast and pauses for read-aloud', function
   assert.ok(app.indexOf('notices.pause()') !== -1);
   assert.ok(app.indexOf('notices.resume()') !== -1);
   assert.ok(app.indexOf('NOTICE_MS') !== -1);
-  assert.ok(sw.indexOf('pet-quests-shell-7') !== -1);
+  assert.ok(sw.indexOf('pet-quests-shell-8') !== -1);
+  assert.ok(sw.indexOf('./js/rounds.js') !== -1);
   assert.ok(sw.indexOf('./js/more-reading.js') !== -1);
   assert.ok(sw.indexOf('./js/stickers.js') !== -1);
   assert.ok(sw.indexOf('./js/closet.js') !== -1);
@@ -2281,6 +2283,199 @@ test('closet art matches the item name', function () {
   assert.ok(cloud.indexOf('Q') !== -1);
   var worn = PQCloset.layers('puppy', 1, { hat: '', glasses: 'glasses-heart', scarf: '', shirt: '', shoes: '', pack: '' });
   assert.ok(worn.indexOf('data-shape="heart"') !== -1);
+});
+
+function rightChoice(game) {
+  return choiceIndex(game.choices);
+}
+
+test('new rounds use the adaptive picker, toggles, and fresh reading', function () {
+  assert.strictEqual(PQStorage.SCHEMA_VERSION, 1);
+  assert.strictEqual(PQRounds.contentCount('order'), 18);
+  assert.strictEqual(PQRounds.contentCount('cloze'), 18);
+  assert.strictEqual(PQRounds.contentCount('clue'), 18);
+  assert.strictEqual(PQRounds.contentCount('paper'), 18);
+
+  var fresh = PQStorage.defaultState();
+  assert.strictEqual(PQRounds.forPlace(fresh, 'library').length, 0);
+  assert.strictEqual(PQRounds.forPlace(fresh, 'school').length, 0);
+  assert.strictEqual(PQRounds.forPlace(fresh, 'parlor').length, 0);
+  fresh.world.places = ['library'];
+  var libraryIds = PQRounds.forPlace(fresh, 'library').map(function (game) { return game.id; });
+  assert.ok(libraryIds.indexOf('order') !== -1);
+  assert.ok(libraryIds.indexOf('cloze') !== -1);
+  assert.ok(libraryIds.indexOf('paper') !== -1);
+  assert.ok(libraryIds.indexOf('fetch') === -1);
+  assert.strictEqual(PQRounds.forPlace(fresh, 'playground').length, 0);
+  fresh.world.places.push('parlor');
+  assert.ok(PQRounds.forPlace(fresh, 'parlor').length >= 8);
+
+  var toggled = boardState(5);
+  toggled.courses.tables = [9];
+  ['scoop', 'fetch', 'garden'].forEach(function (id) {
+    var game = PQRounds.create(id, toggled, lcg(4));
+    assert.strictEqual(game.a, 9, id + ' stays on the table that is on');
+  });
+  var family = PQRounds.create('family', toggled, lcg(5));
+  family.houses.forEach(function (house) {
+    house.steps.forEach(function (step) {
+      assert.ok(step.fact.a === 9 || step.fact.b === 9);
+    });
+  });
+
+  var easy = boardState(1);
+  easy.courses.tables = [2, 9, 12];
+  var i;
+  for (i = 0; i < 8; i++) {
+    var limited = PQRounds.create('fetch', easy, lcg(20 + i));
+    assert.strictEqual(limited.a, 2);
+    assert.ok(limited.b <= 3, 'scout factor ' + limited.b);
+  }
+  var scoutHouse = PQRounds.create('family', boardState(1), lcg(2));
+  var champHouse = PQRounds.create('family', boardState(4), lcg(3));
+  var sawDiv = false;
+  scoutHouse.houses.forEach(function (house) {
+    house.steps.forEach(function (step) {
+      assert.ok(step.prompt.indexOf('÷') === -1);
+    });
+  });
+  champHouse.houses.forEach(function (house) {
+    house.steps.forEach(function (step) {
+      if (step.prompt.indexOf('÷') !== -1) sawDiv = true;
+    });
+  });
+  assert.ok(sawDiv, 'higher ranks include one inverse division step');
+
+  var scoopState = boardState(2);
+  var scoop = PQRounds.create('scoop', scoopState, lcg(6));
+  var bad = 0;
+  while (scoop.choices[bad].ok) bad += 1;
+  var miss = PQRounds.answer(scoop, bad, lcg(7), scoopState);
+  assert.strictEqual(miss.ok, false);
+  assert.strictEqual(scoop.done, false);
+  assert.ok(!/wrong|fail|lose|shame/i.test((miss.message || '') + ' ' + (miss.hint || '')));
+  var miss2 = PQRounds.answer(scoop, bad, lcg(8), scoopState);
+  assert.strictEqual(miss2.ok, false);
+  assert.ok(scoop.reveal != null);
+  var fixed = PQRounds.answer(scoop, rightChoice(scoop), lcg(9), scoopState);
+  assert.strictEqual(fixed.ok, true);
+  assert.strictEqual(scoop.solved, 1);
+  assert.ok(Object.keys(scoopState.factStats).length >= 1);
+
+  var weakState = boardState(5);
+  weakState.courses.tables = [2, 3, 4, 5, 6, 7, 8, 9];
+  var facts = {};
+  var t;
+  var b;
+  for (t = 2; t <= 9; t++) {
+    weakState.tableStats[String(t)] = { attempts: 12, correct: 11 };
+    for (b = 1; b <= 12; b++) {
+      facts[PQMath.factKey(t, b, '×')] = { attempts: 8, correct: 8, misses: 0, slow: 0 };
+    }
+  }
+  facts['4×7'] = { attempts: 8, correct: 2, misses: 6, slow: 1 };
+  facts['6×8'] = { attempts: 8, correct: 3, misses: 5, slow: 2 };
+  facts['3×9'] = { attempts: 6, correct: 2, misses: 4, slow: 1 };
+  weakState.factStats = facts;
+  var weakKeys = { '4×7': true, '6×8': true, '3×9': true };
+  var weakN = 0;
+  for (i = 0; i < 80; i++) {
+    weakState.recentFacts = [];
+    weakState.factDue = [];
+    var draw = PQRounds.create('fetch', weakState, lcg(80 + i));
+    if (weakKeys[PQMath.factKey(draw.a, draw.b, '×')]) weakN += 1;
+  }
+  assert.ok(weakN / 80 >= 0.3, 'weak share ' + weakN);
+
+  var reader = boardState(2);
+  var first = PQRounds.create('order', reader, lcg(1));
+  var second = PQRounds.create('order', reader, lcg(2));
+  var seen = {};
+  first.items.forEach(function (item) { seen[item.id] = true; });
+  second.items.forEach(function (item) {
+    assert.ok(!seen[item.id], 'repeated ' + item.id);
+  });
+  var scoutRead = PQRounds.create('cloze', boardState(1), lcg(1));
+  var champRead = PQRounds.create('cloze', boardState(5), lcg(1));
+  assert.strictEqual(scoutRead.items[0].level, 1);
+  assert.strictEqual(champRead.items[0].level, 3);
+  var readMiss = PQRounds.answer(scoutRead, scoutRead.choices[0].ok ? 1 : 0, lcg(3), boardState(1));
+  assert.strictEqual(readMiss.ok, false);
+  assert.ok(!/wrong|fail|lose|shame/i.test((readMiss.message || '') + ' ' + (readMiss.hint || '')));
+
+  var garden = boardState(2);
+  garden.courses.tables = [2];
+  garden.tableStats = { '2': { attempts: 20, correct: 20 } };
+  garden.factStats = {};
+  garden.recentFacts = [];
+  for (b = 1; b <= 6; b++) {
+    garden.factStats[PQMath.factKey(2, b, '×')] = { attempts: 3, correct: 3, misses: 0, slow: 0 };
+    garden.recentFacts.push(PQMath.factKey(2, b, '×'));
+  }
+  garden.factStats['2×7'] = { attempts: 2, correct: 2, misses: 0, slow: 0 };
+  var trail = PQRounds.create('garden', garden, lcg(11));
+  assert.strictEqual(trail.a, 2);
+  assert.strictEqual(trail.b, 7);
+  var planted = PQRounds.answer(trail, rightChoice(trail), lcg(12), garden);
+  assert.strictEqual(planted.ok, true);
+  assert.ok(PQWorld.hasPrize(garden, 'table-bloom-2'));
+  assert.ok(/sticker/.test(planted.message));
+
+  var mem = {};
+  var raw = {
+    getItem: function (k) { return Object.prototype.hasOwnProperty.call(mem, k) ? mem[k] : null; },
+    setItem: function (k, v) { mem[k] = String(v); },
+    removeItem: function (k) { delete mem[k]; }
+  };
+  var store = PQStorage.createStore(raw);
+  mem[store.STORAGE_KEY] = JSON.stringify({
+    version: 1,
+    onboardingDone: true,
+    petId: 'puppy',
+    petName: 'Pip',
+    courses: { grade: 3, tables: [2, 4], rank: 'ranger' }
+  });
+  var loaded = store.load();
+  assert.strictEqual(loaded.version, 1);
+  assert.strictEqual(PQStorage.SCHEMA_VERSION, 1);
+  assert.strictEqual(loaded.petName, 'Pip');
+  assert.strictEqual(loaded.petId, 'puppy');
+  var kept = PQRounds.create('garden', loaded, lcg(13));
+  assert.ok(kept.a === 2 || kept.a === 4);
+  assert.ok(kept.promptText);
+
+  var quiet = PQStorage.defaultState();
+  PQWorld.ensureWorld(quiet);
+  var tuesday = new Date(2026, 10, 24, 12, 0, 0);
+  var wednesday = new Date(2026, 10, 25, 12, 0, 0);
+  assert.strictEqual(tuesday.getDay(), 2);
+  assert.strictEqual(PQRounds.featureFor(quiet, tuesday), null);
+  quiet.world.places = ['library', 'school'];
+  assert.strictEqual(PQRounds.featureFor(quiet, wednesday), null);
+  var featured = PQRounds.featureFor(quiet, tuesday);
+  assert.ok(featured && featured.id);
+  PQQuest.ensureTodayQuest(quiet, lcg(14), tuesday);
+  assert.ok(quiet.daily.tasks.some(function (task) {
+    return task.type === 'feature' && task.gameId === featured.id;
+  }));
+  var plain = PQQuest.generateDailyQuest(quiet, lcg(15), { now: tuesday });
+  assert.ok(!plain.tasks.some(function (task) { return task.type === 'feature'; }));
+  quiet.daily.taskIndex = 1;
+  var keptLength = quiet.daily.tasks.length;
+  PQQuest.ensureTodayQuest(quiet, lcg(16), tuesday);
+  assert.strictEqual(quiet.daily.tasks.length, keptLength);
+
+  var round = PQRounds.create('fetch', boardState(2), lcg(17));
+  var guard = 0;
+  var playState = boardState(2);
+  round = PQRounds.create('fetch', playState, lcg(17));
+  while (!round.done && guard < 20) {
+    guard += 1;
+    var step = PQRounds.answer(round, rightChoice(round), lcg(30 + guard), playState);
+    assert.ok(step.ok);
+  }
+  assert.ok(round.done);
+  assert.ok(guard >= 4 && guard <= 5);
 });
 
 if (!process.env.SKIP_FIT) {

@@ -3062,3 +3062,121 @@ h2 {
   height: 84px;
   border-radius: 12px;
 }
+
+.bowl-row,
+.door-row,
+.bloom-row,
+.table-dots {
+  display: flex;
+  gap: 4px;
+  justify-content: center;
+  align-items: flex-end;
+  flex: 0 0 auto;
+}
+
+.kibble-bowl {
+  width: 44px;
+  height: 32px;
+  border: 3px solid #c4784a;
+  border-radius: 0 0 16px 16px;
+  background: #fffaf0;
+  display: flex;
+  gap: 2px;
+  align-items: flex-end;
+  justify-content: center;
+  padding: 3px;
+}
+
+.kibble-bowl i {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #c4a35a;
+}
+
+.kibble-more {
+  align-self: center;
+  font-weight: 800;
+}
+
+.fact-door {
+  width: 48px;
+  height: 58px;
+  border-radius: 10px 10px 4px 4px;
+  background: #e7d3c0;
+  border: 3px solid #a35f38;
+}
+
+.fact-door.now {
+  background: #e8c84a;
+}
+
+.fact-door.done {
+  background: #7a9a68;
+}
+
+.bloom {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #efe6d4;
+  flex: 0 0 auto;
+}
+
+.bloom.sprout {
+  background: #c5d7a8;
+}
+
+.bloom.bloom {
+  background: #5f7a52;
+}
+
+.bloom.later {
+  opacity: 0.35;
+}
+
+.bloom.now {
+  box-shadow: 0 0 0 2px rgba(196, 120, 74, 0.55);
+}
+
+.table-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #e7d3c0;
+}
+
+.table-dot.on {
+  box-shadow: 0 0 0 2px rgba(196, 120, 74, 0.45);
+}
+
+.table-dot.full {
+  background: #e8c84a;
+}
+
+.fetch-mats {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  flex: 0 0 auto;
+}
+
+.fetch-mats .choice-btn {
+  min-height: 56px;
+  text-align: center;
+  font-size: 1.25rem;
+}
+
+.order-built {
+  margin: 0;
+  padding-left: 1.2rem;
+  flex: 0 0 auto;
+  font-weight: 700;
+}
+
+.round-choices,
+.round-read,
+.panel.game .passage,
+.panel.game .lede {
+  flex: 0 0 auto;
+}

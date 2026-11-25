@@ -26,6 +26,7 @@ var SCREENS = [
   'quest', 'reading', 'question', 'story',
   'room', 'four', 'race', 'bingo', 'memory', 'memory-miss', 'array',
   'hide', 'parade', 'treasure', 'sort',
+  'scoop', 'family', 'garden', 'fetch', 'order', 'cloze', 'clue', 'paper',
   'outing', 'closet', 'outside',
   'shop', 'shop-pay', 'shop-clothes', 'library',
   'settings', 'settings-lessons', 'settings-tables', 'settings-grownups',
