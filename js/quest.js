@@ -415,8 +415,8 @@
       existing.tasks.length
     );
 
-    if (hasToday && questStarted(existing)) return state;
-    if (hasToday && sameCourses(existing.plan, courses)) return state;
+    if (hasToday && questStarted(existing)) return maybeFeature(state, now);
+    if (hasToday && sameCourses(existing.plan, courses)) return maybeFeature(state, now);
 
     var reuse = null;
     if (hasToday && existing.passageId && courses.parts.reading) {
@@ -424,7 +424,8 @@
     }
 
     var quest = generateDailyQuest(state, rng, { now: now, reusePassage: reuse });
-    return installQuest(state, quest, hasToday ? existing.passageId : null);
+    installQuest(state, quest, hasToday ? existing.passageId : null);
+    return maybeFeature(state, now);
   }
 
   /**
@@ -586,7 +587,53 @@
     }
     if (task.mission === 'reading') return 'Reading';
     if (task.mission === 'multiply') return 'Times tables';
+    if (task.mission === 'play') return 'Game';
     return '';
+  }
+
+  /**
+   * On some days, one unlocked round joins the quest after the usual tasks.
+   * A quest she already started is left as it is.
+   */
+  function attachFeature(state, feature) {
+    if (!state || !state.daily || !feature) return state;
+    if (questStarted(state.daily)) return state;
+    var tasks = state.daily.tasks;
+    if (!Array.isArray(tasks)) return state;
+    var i;
+    for (i = 0; i < tasks.length; i++) {
+      if (tasks[i] && tasks[i].type === 'feature') return state;
+    }
+    tasks.push({
+      id: 'feature-' + feature.id,
+      type: 'feature',
+      mission: 'play',
+      gameId: feature.id,
+      title: feature.title,
+      placeId: feature.place,
+      prompt: feature.title + ' is waiting at the ' + feature.placeTitle + '.'
+    });
+    if (!Array.isArray(state.daily.missions)) state.daily.missions = [];
+    state.daily.missions.push({ id: 'play', label: feature.title, count: 1 });
+    return state;
+  }
+
+  function clearFeature(state, gameId) {
+    var tasks = state && state.daily && state.daily.tasks;
+    if (!tasks || !gameId) return state;
+    var i;
+    for (i = 0; i < tasks.length; i++) {
+      if (tasks[i] && tasks[i].type === 'feature' && tasks[i].gameId === gameId) {
+        tasks[i].cleared = true;
+      }
+    }
+    return state;
+  }
+
+  function maybeFeature(state, now) {
+    var rounds = typeof PQRounds !== 'undefined' ? PQRounds : null;
+    if (!rounds || !rounds.featureFor) return state;
+    return attachFeature(state, rounds.featureFor(state, now || new Date()));
   }
 
   function applyGrowthForQuest(state, weeklyJustMet) {
@@ -621,6 +668,8 @@
     describeToday: describeToday,
     questStarted: questStarted,
     currentMissionLabel: currentMissionLabel,
+    attachFeature: attachFeature,
+    clearFeature: clearFeature,
     applyGrowthForQuest: applyGrowthForQuest,
     stageFromPoints: stageFromPoints
   };

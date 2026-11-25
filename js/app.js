@@ -701,7 +701,7 @@
     if (house.id === 'store') {
       dock.push('<button type="button" class="dock-btn" data-act="open-shop">🏪 Shop</button>');
     }
-    PQBoards.forPlace(state, house.id).concat(PQArcade.forPlace(state, house.id)).forEach(function (meta) {
+    PQBoards.forPlace(state, house.id).concat(PQArcade.forPlace(state, house.id), PQRounds.forPlace(state, house.id)).forEach(function (meta) {
       dock.push('<button type="button" class="dock-btn" data-act="open-board" data-game="' +
         meta.id + '">🎲 ' + esc(meta.button) + '</button>');
     });
@@ -799,6 +799,7 @@
     var body = '';
     if (task.type === 'reading-pass') body = renderReadingPass(task);
     else if (task.type === 'reading-q') body = renderReadingQ(task);
+    else if (task.type === 'feature') body = renderFeature(task);
     else body = renderMathTask(task);
 
     var gentle = feedback && feedback.kind !== 'good' ? hintStripHtml() : '';
@@ -877,6 +878,17 @@
     }
     chunkText(task.text).forEach(function (page) { pages.push(page); });
     return pages.length ? pages : [''];
+  }
+
+  function renderFeature(task) {
+    return (
+      '<section class="reading-card">' +
+      '<p class="eyebrow">Today\'s game</p>' +
+      '<h2>' + esc(task.title) + '</h2>' +
+      '<p class="lede">' + esc(task.prompt) + '</p>' +
+      '<button type="button" class="btn primary" data-act="play-feature">▶ Play</button>' +
+      '</section>'
+    );
   }
 
   function renderReadingPass(task) {
@@ -2026,6 +2038,7 @@
     else if (board.id === 'parade') body = renderParade();
     else if (board.id === 'treasure') body = renderTreasure();
     else if (board.id === 'sort') body = renderSort();
+    else if (PQRounds.isRound(board.id)) body = PQRounds.markup(board, state);
     var done = board.finished || board.done;
     app.innerHTML =
       headerBar(board.title, { back: true }) +
@@ -2065,6 +2078,7 @@
     );
     if (result.ok) board.hint = '';
     else board.hint = result.hint || result.message || '';
+    if (result.done) PQQuest.clearFeature(state, board.id);
     if (!result.ok) {
       queueToast('gentle', result.message || 'Not yet.', '');
       PQAudio.play('gentle', state.soundOn);
@@ -2442,12 +2456,12 @@
     }
     if (act === 'open-board') {
       var gameId = t.getAttribute('data-game');
-      var allowed = PQBoards.forPlace(state, houseId).concat(PQArcade.forPlace(state, houseId));
+      var allowed = PQBoards.forPlace(state, houseId).concat(PQArcade.forPlace(state, houseId), PQRounds.forPlace(state, houseId));
       var meta = null;
       var gi;
       for (gi = 0; gi < allowed.length; gi++) if (allowed[gi].id === gameId) meta = allowed[gi];
       if (!meta) return;
-      board = PQBoards.create(gameId, state, Math.random) || PQArcade.create(gameId, state, Math.random);
+      board = PQBoards.create(gameId, state, Math.random) || PQArcade.create(gameId, state, Math.random) || PQRounds.create(gameId, state, Math.random);
       boardEntry = '';
       if (!board) return;
       go('board');
@@ -2456,7 +2470,9 @@
     if (act === 'board-again') {
       if (!board) return;
       var againId = board.id;
-      board = PQBoards.create(againId, state, Math.random) || PQArcade.create(againId, state, Math.random);
+      var fromQuest = !!board.fromQuest;
+      board = PQBoards.create(againId, state, Math.random) || PQArcade.create(againId, state, Math.random) || PQRounds.create(againId, state, Math.random);
+      if (board && fromQuest) board.fromQuest = true;
       boardEntry = '';
       go('board');
       return;
@@ -2515,6 +2531,27 @@
       if (!board) return;
       PQBoards.arrayAdvance(board, Math.random);
       render();
+      return;
+    }
+    if (act === 'round-speak') {
+      if (!board || !board.speak) return;
+      PQAudio.speak(board.speak, true);
+      return;
+    }
+    if (act === 'round-choice') {
+      if (!board) return;
+      settleBoard(PQRounds.answer(board, parseInt(t.getAttribute('data-idx'), 10), Math.random, state));
+      return;
+    }
+    if (act === 'play-feature') {
+      var featureTask = currentTask();
+      if (!featureTask || featureTask.type !== 'feature') return;
+      if (!PQWorld.isPlaceOpen(state, featureTask.placeId)) return;
+      houseId = featureTask.placeId;
+      board = PQRounds.create(featureTask.gameId, state, Math.random);
+      if (!board) return;
+      board.fromQuest = true;
+      go('board');
       return;
     }
     if (act === 'arcade-choice') {
@@ -2621,8 +2658,13 @@
         return;
       }
       if (screen === 'board') {
+        var questReturn = board && board.fromQuest && state.daily && !state.daily.completed;
         board = null;
         boardEntry = '';
+        if (questReturn) {
+          go('quest');
+          return;
+        }
         go(houseId ? 'house' : 'home');
         return;
       }
@@ -3955,6 +3997,26 @@
       var missAt = 1;
       while (missAt < board.cards.length && board.cards[missAt].pair === board.cards[0].pair) missAt += 1;
       PQBoards.flipMemory(board, missAt);
+      go('board');
+      return;
+    }
+    var roundPreview = {
+      scoop: { grade: 2, house: 'bakery' },
+      family: { grade: 4, house: 'school' },
+      garden: { grade: 3, house: 'garden' },
+      fetch: { grade: 2, house: 'playground' },
+      order: { grade: 2, house: 'library' },
+      cloze: { grade: 3, house: 'library' },
+      clue: { grade: 3, house: 'friend' },
+      paper: { grade: 4, house: 'library' }
+    };
+    if (roundPreview[which]) {
+      var roundSpec = roundPreview[which];
+      state.courses.grade = roundSpec.grade;
+      state.courses.rank = PQStorage.rankFromGrade(roundSpec.grade);
+      if (state.world.places.indexOf(roundSpec.house) === -1) state.world.places.push(roundSpec.house);
+      houseId = roundSpec.house;
+      board = PQRounds.create(which, state, function () { return 0.2; });
       go('board');
       return;
     }
